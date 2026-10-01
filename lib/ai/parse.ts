@@ -175,11 +175,13 @@ export async function parseRequest(opts: {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const res = await client.create({
       model: MODEL,
-      max_tokens: 2000,
+      // The model thinks before answering, and that counts toward this limit.
+      max_tokens: 8000,
       system: parseSystemPrompt(opts.lang, opts.today),
       messages,
       tools: [RECORD_TOOL],
-      tool_choice: { type: "tool", name: RECORD_TOOL.name },
+      // Forcing the tool is refused by current models; the prompt asks for it and the loop retries.
+      tool_choice: { type: "auto" },
     });
     const call = res.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
     const checked = call

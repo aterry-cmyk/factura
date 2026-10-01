@@ -83,7 +83,7 @@ describe("parseRequest", () => {
     expect(r.value).toMatchObject({ kind: "estimate", customerName: "Juan", promptVersion: "parse-request@1" });
     expect(r.value.items[0].needsConfirm).toBe(true);
     const p = client.calls[0];
-    expect(p.tool_choice).toEqual({ type: "tool", name: "record_request" });
+    expect(p.tool_choice).toEqual({ type: "auto" });
     const msg = String(p.messages[0].content);
     expect(msg).toContain("<request>");
     expect(msg).toContain("Pintar bbaño/b: $900.00");
