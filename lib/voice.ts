@@ -5,22 +5,39 @@ import type { Lang } from "./types";
  * device's own (speechSynthesis); a device that has no voice for that country uses another Spanish
  * voice, and the settings page says so rather than pretending.
  */
-export const COUNTRIES: { code: string; locale: string; es: string; en: string }[] = [
-  { code: "US", locale: "es-US", es: "Estados Unidos", en: "United States" },
-  { code: "MX", locale: "es-MX", es: "México", en: "Mexico" },
-  { code: "PR", locale: "es-PR", es: "Puerto Rico", en: "Puerto Rico" },
-  { code: "DO", locale: "es-DO", es: "República Dominicana", en: "Dominican Republic" },
-  { code: "CU", locale: "es-CU", es: "Cuba", en: "Cuba" },
-  { code: "GT", locale: "es-GT", es: "Guatemala", en: "Guatemala" },
-  { code: "SV", locale: "es-SV", es: "El Salvador", en: "El Salvador" },
-  { code: "HN", locale: "es-HN", es: "Honduras", en: "Honduras" },
-  { code: "NI", locale: "es-NI", es: "Nicaragua", en: "Nicaragua" },
-  { code: "CO", locale: "es-CO", es: "Colombia", en: "Colombia" },
-  { code: "VE", locale: "es-VE", es: "Venezuela", en: "Venezuela" },
-  { code: "EC", locale: "es-EC", es: "Ecuador", en: "Ecuador" },
-  { code: "PE", locale: "es-PE", es: "Perú", en: "Peru" },
-  { code: "AR", locale: "es-AR", es: "Argentina", en: "Argentina" },
+// azure: the natural voices Azure Speech has for that country (learn.microsoft.com, language
+// support → text to speech), a woman's and a man's. Used when AZURE_SPEECH_KEY is set.
+export const COUNTRIES: { code: string; locale: string; es: string; en: string; azure: { female: string; male: string } }[] = [
+  { code: "US", locale: "es-US", es: "Estados Unidos", en: "United States", azure: { female: "es-US-PalomaNeural", male: "es-US-AlonsoNeural" } },
+  { code: "MX", locale: "es-MX", es: "México", en: "Mexico", azure: { female: "es-MX-DaliaNeural", male: "es-MX-JorgeNeural" } },
+  { code: "PR", locale: "es-PR", es: "Puerto Rico", en: "Puerto Rico", azure: { female: "es-PR-KarinaNeural", male: "es-PR-VictorNeural" } },
+  { code: "DO", locale: "es-DO", es: "República Dominicana", en: "Dominican Republic", azure: { female: "es-DO-RamonaNeural", male: "es-DO-EmilioNeural" } },
+  { code: "CU", locale: "es-CU", es: "Cuba", en: "Cuba", azure: { female: "es-CU-BelkysNeural", male: "es-CU-ManuelNeural" } },
+  { code: "GT", locale: "es-GT", es: "Guatemala", en: "Guatemala", azure: { female: "es-GT-MartaNeural", male: "es-GT-AndresNeural" } },
+  { code: "SV", locale: "es-SV", es: "El Salvador", en: "El Salvador", azure: { female: "es-SV-LorenaNeural", male: "es-SV-RodrigoNeural" } },
+  { code: "HN", locale: "es-HN", es: "Honduras", en: "Honduras", azure: { female: "es-HN-KarlaNeural", male: "es-HN-CarlosNeural" } },
+  { code: "NI", locale: "es-NI", es: "Nicaragua", en: "Nicaragua", azure: { female: "es-NI-YolandaNeural", male: "es-NI-FedericoNeural" } },
+  { code: "CO", locale: "es-CO", es: "Colombia", en: "Colombia", azure: { female: "es-CO-SalomeNeural", male: "es-CO-GonzaloNeural" } },
+  { code: "VE", locale: "es-VE", es: "Venezuela", en: "Venezuela", azure: { female: "es-VE-PaolaNeural", male: "es-VE-SebastianNeural" } },
+  { code: "EC", locale: "es-EC", es: "Ecuador", en: "Ecuador", azure: { female: "es-EC-AndreaNeural", male: "es-EC-LuisNeural" } },
+  { code: "PE", locale: "es-PE", es: "Perú", en: "Peru", azure: { female: "es-PE-CamilaNeural", male: "es-PE-AlexNeural" } },
+  { code: "AR", locale: "es-AR", es: "Argentina", en: "Argentina", azure: { female: "es-AR-ElenaNeural", male: "es-AR-TomasNeural" } },
 ];
+
+const ENGLISH_AZURE = { female: "en-US-JennyNeural", male: "en-US-GuyNeural" };
+
+export type VoiceGender = "female" | "male";
+export const isGender = (g: unknown): g is VoiceGender => g === "female" || g === "male";
+
+/** The Azure voice for the owner's country and choice; the app in English uses a US English voice. */
+export function azureVoiceFor(country: string, lang: Lang, gender: VoiceGender): { name: string; locale: string } {
+  if (lang === "en") return { name: ENGLISH_AZURE[gender], locale: "en-US" };
+  const c = COUNTRIES.find((x) => x.code === country) ?? COUNTRIES[0];
+  return { name: c.azure[gender], locale: c.locale };
+}
+
+/** "es-MX-DaliaNeural" → "Dalia". */
+export const azureVoiceLabel = (name: string): string => /-([A-Z][a-z]+)Neural$/.exec(name)?.[1] ?? name;
 
 export const DEFAULT_COUNTRY = "US";
 

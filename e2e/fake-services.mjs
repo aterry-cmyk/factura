@@ -3,6 +3,7 @@
 import http from "node:http";
 
 const calls = [];
+let azureFails = false; // tests flip this through /_azure to check the fallback to the device's voice
 const port = Number(process.env.FAKE_PORT || 3199);
 
 function answerFor(text) {
@@ -32,6 +33,10 @@ http
         res.end(JSON.stringify(json));
       };
       if (req.url === "/_calls") return send(200, calls);
+      if (req.url?.startsWith("/_azure")) {
+        azureFails = req.url.includes("fail=1");
+        return send(200, { azureFails });
+      }
       calls.push({ url: req.url, body });
       if (req.url?.startsWith("/v1/messages")) {
         const params = JSON.parse(body);
@@ -41,6 +46,12 @@ http
           usage: { input_tokens: 10, output_tokens: 10 },
           content: [{ type: "tool_use", id: "toolu_fake", name: "record_request", input: answerFor(text) }],
         });
+      }
+      if (req.url === "/cognitiveservices/v1") {
+        if (azureFails) return send(401, { error: "bad key" });
+        // Not real audio: the tests record what the page asks to play rather than hearing it.
+        res.writeHead(200, { "Content-Type": "audio/mpeg" });
+        return res.end(Buffer.from("ID3-fake-mp3"));
       }
       if (req.url === "/emails") return send(200, { id: "email_fake" });
       if (req.url?.includes("/Messages.json")) return send(201, { sid: "SM_fake" });

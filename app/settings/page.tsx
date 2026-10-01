@@ -2,6 +2,7 @@ import { Header } from "@/components/Header";
 import { SettingsForm } from "@/components/SettingsForm";
 import { VoiceSettings } from "@/components/VoiceSettings";
 import { aiConfigured } from "@/lib/ai/config";
+import { azureConfigured } from "@/lib/azure-speech";
 import { dict } from "@/lib/i18n";
 import { emailConfigured, smsConfigured } from "@/lib/send";
 import { getSettings } from "@/lib/store";
@@ -15,6 +16,7 @@ export default async function SettingsPage() {
     ["Asistente / Assistant (Anthropic)", aiConfigured(), "ANTHROPIC_API_KEY"],
     ["Email (Resend)", emailConfigured(), "RESEND_API_KEY, EMAIL_FROM"],
     ["SMS (Twilio)", smsConfigured(), "TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM"],
+    [s.lang === "es" ? "Voz natural (Azure Speech)" : "Natural voice (Azure Speech)", azureConfigured(), "AZURE_SPEECH_KEY, AZURE_SPEECH_REGION"],
     [s.lang === "es" ? "Recordatorios automáticos" : "Automatic reminders", Boolean(process.env.CRON_SECRET), "CRON_SECRET"],
   ];
   return (
@@ -26,7 +28,7 @@ export default async function SettingsPage() {
         hasLogo={s.hasLogo}
         business={{ name: s.name, ownerName: s.ownerName, address: s.address, phone: s.phone, email: s.email, website: s.website }}
       />
-      <VoiceSettings lang={s.lang} country={s.country} voiceOn={s.voiceOn} />
+      <VoiceSettings lang={s.lang} country={s.country} voiceOn={s.voiceOn} voiceGender={s.voiceGender} cloud={azureConfigured()} />
       <section className="card">
         <h3>{t.connections}</h3>
         <ul className="list">

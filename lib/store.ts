@@ -33,6 +33,7 @@ function toSettings(r: Row): Settings {
     onboarded: Boolean(r.onboarded),
     country: isCountry(r.country) ? r.country : DEFAULT_COUNTRY,
     voiceOn: r.voice_on !== false,
+    voiceGender: r.voice_gender === "male" ? "male" : "female",
   };
 }
 
@@ -45,7 +46,8 @@ export async function setLang(lang: Lang): Promise<void> {
   await sql()`update settings set lang = ${lang}, updated_at = now() where id = 1`;
 }
 
-export async function setVoice(v: { country?: string; voiceOn?: boolean }): Promise<void> {
+export async function setVoice(v: { country?: string; voiceOn?: boolean; voiceGender?: "female" | "male" }): Promise<void> {
+  if (v.voiceGender !== undefined) await sql()`update settings set voice_gender = ${v.voiceGender}, updated_at = now() where id = 1`;
   if (v.country !== undefined) await sql()`update settings set country = ${v.country}, updated_at = now() where id = 1`;
   if (v.voiceOn !== undefined) await sql()`update settings set voice_on = ${v.voiceOn}, updated_at = now() where id = 1`;
 }

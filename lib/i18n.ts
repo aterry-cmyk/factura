@@ -162,6 +162,10 @@ const es = {
   voiceNone: "Este dispositivo no tiene voces en español. Puedes seguir usando la app sin voz.",
   voiceUnsupported: "Este navegador no puede hablar. Puedes seguir usando la app sin voz.",
   listenAgain: "Escuchar otra vez",
+  voiceWho: "¿Qué voz prefieres?",
+  voiceFemale: "Mujer",
+  voiceMale: "Hombre",
+  voiceAzure: (place: string, name: string) => `Voz natural de ${place}: ${name}. Suena igual en cualquier teléfono.`,
   errorGeneric: "Algo salió mal. Inténtalo otra vez.",
 };
 
@@ -322,6 +326,10 @@ const en: Dict = {
   voiceNone: "This device has no voice for this language. You can keep using the app without voice.",
   voiceUnsupported: "This browser can't speak. You can keep using the app without voice.",
   listenAgain: "Listen again",
+  voiceWho: "Which voice do you prefer?",
+  voiceFemale: "Woman",
+  voiceMale: "Man",
+  voiceAzure: (place: string, name: string) => `Natural voice from ${place}: ${name}. It sounds the same on any phone.`,
   errorGeneric: "Something went wrong. Please try again.",
 };
 

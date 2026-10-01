@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Creator } from "@/components/Creator";
 import { Header } from "@/components/Header";
 import { aiConfigured } from "@/lib/ai/config";
+import { azureConfigured } from "@/lib/azure-speech";
 import { dict, statusLabel } from "@/lib/i18n";
 import { formatMoney, todayIso } from "@/lib/money";
 import { getDocument, getSettings, listDocuments } from "@/lib/store";
@@ -26,6 +27,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
         lang={settings.lang}
         defaults={settings}
         ai={aiConfigured()}
+        cloudVoice={azureConfigured()}
         edit={editDoc && editDoc.status === "draft" ? editDoc : undefined}
       >
       {!editDoc && (

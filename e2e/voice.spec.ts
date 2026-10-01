@@ -2,6 +2,9 @@ import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 import postgres from "postgres";
 
+// The copy of the app without Azure Speech: everything here is the device's own voice.
+test.use({ baseURL: "http://127.0.0.1:3101" });
+
 // Headless Chrome has no voices, so each page gets a stand-in list and a recorder in place of
 // speechSynthesis. What the app passes to speak() is what a real device would read aloud.
 const fakeVoices = (langs: string[]) => {

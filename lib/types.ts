@@ -62,6 +62,8 @@ export interface Settings extends Business {
   /** ISO country code (lib/voice.ts COUNTRIES): the Spanish the app listens for and speaks in. */
   country: string;
   voiceOn: boolean;
+  /** Which of the country's two Azure voices: a woman's or a man's. */
+  voiceGender: "female" | "male";
 }
 
 export interface Doc {

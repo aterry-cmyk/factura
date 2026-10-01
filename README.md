@@ -10,6 +10,7 @@ One sign-in. No accounting, no payment processing. It shows his payment instruct
 |---|---|
 | Voice → text | The browser's own dictation (Chrome, Edge, Safari) in the owner's country's Spanish (`es-MX`, `es-PR`, `es-CO`…; falls back to `es-US` where a browser doesn't know it), or `en-US`. Typing works everywhere. |
 | Text → voice | Settings → Voz: he picks his country (`lib/voice.ts`). The device's own voice reads back what was understood (amounts from the items on screen) and each question (`components/useVoice.ts`). It prefers that country's voice, then another natural Spanish voice, never the toy ones, and Settings says plainly when the device has no voice for his country. Can be switched off. A speech failure never blocks the flow. |
+| Natural voice (optional) | With `AZURE_SPEECH_KEY` + `AZURE_SPEECH_REGION`, `/api/speak` reads the text in Azure's neural voice for his country (a woman's or a man's, his choice in Settings; names in `lib/voice.ts`), the same on every phone. The voice comes from his saved settings, never the browser. If Azure fails, the device's voice says it instead. |
 | Text → items | Claude with one tool, `record_request` (`lib/ai/parse.ts`, prompt `lib/ai/prompts/parse-request.ts`). |
 | Estimator | A price he said is used as said. A job he's priced before uses his past price. Anything else gets a **suggested** price with a one-line reason, and he has to confirm or change it before he can continue. |
 | Checks on the AI | A price marked "said" must appear in what was heard; a "past price" must be in his history; a quantity must have been said. If not, it becomes a suggestion to confirm. One retry with the exact problems, then a clear failure. Model and prompt version are saved on each document. |
@@ -44,6 +45,7 @@ One sign-in. No accounting, no payment processing. It shows his payment instruct
 | `APP_URL` | the final address, e.g. `https://facturas.example.com` (printed in links customers get) |
 | `CRON_SECRET` | `openssl rand -hex 32` (Vercel sends it to the reminder job) |
 | `RESEND_API_KEY`, `EMAIL_FROM` | optional, email |
+| `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION` | optional, natural voice per country (a Speech resource in Azure; region like `eastus`) |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` | optional, SMS |
 
 - Deploy. `vercel.json` schedules `/api/cron/reminders` daily at 15:00 UTC (once a day works on the Hobby plan too).

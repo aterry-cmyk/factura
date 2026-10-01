@@ -48,7 +48,7 @@ function toEditItems(items: { description: string; quantity: number; unitPriceCe
 
 type Stage = "speak" | "review" | "wizard";
 
-export function Creator({ lang, defaults, ai, edit, children }: { lang: Lang; defaults: Settings; ai: boolean; edit?: Doc; children?: React.ReactNode }) {
+export function Creator({ lang, defaults, ai, cloudVoice = false, edit, children }: { lang: Lang; defaults: Settings; ai: boolean; cloudVoice?: boolean; edit?: Doc; children?: React.ReactNode }) {
   const t = dict(lang);
   const [stage, setStage] = useState<Stage>(edit ? "review" : "speak");
   const [transcript, setTranscript] = useState("");
@@ -86,7 +86,7 @@ export function Creator({ lang, defaults, ai, edit, children }: { lang: Lang; de
   const appendHeard = useCallback((text: string) => setTranscript((prev) => (prev ? `${prev} ${text}` : text)), []);
   const locale = localeFor(defaults.country, lang);
   const speech = useSpeech(locale, appendHeard);
-  const voice = useVoice(locale, defaults.voiceOn);
+  const voice = useVoice(locale, defaults.voiceOn, cloudVoice);
   const [summary, setSummary] = useState("");
 
   function listen() {
