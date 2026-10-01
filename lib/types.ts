@@ -59,6 +59,9 @@ export interface Settings extends Business {
   lateFee: LateFee;
   paymentMethods: PaymentMethods;
   onboarded: boolean;
+  /** ISO country code (lib/voice.ts COUNTRIES): the Spanish the app listens for and speaks in. */
+  country: string;
+  voiceOn: boolean;
 }
 
 export interface Doc {

@@ -8,7 +8,8 @@ One sign-in. No accounting, no payment processing. It shows his payment instruct
 
 | Step | Where |
 |---|---|
-| Voice → text | The browser's own dictation (Chrome, Edge, Safari; `es-US` / `en-US`). Typing works everywhere. |
+| Voice → text | The browser's own dictation (Chrome, Edge, Safari) in the owner's country's Spanish (`es-MX`, `es-PR`, `es-CO`…; falls back to `es-US` where a browser doesn't know it), or `en-US`. Typing works everywhere. |
+| Text → voice | Settings → Voz: he picks his country (`lib/voice.ts`). The device's own voice reads back what was understood (amounts from the items on screen) and each question (`components/useVoice.ts`). It prefers that country's voice, then another natural Spanish voice, never the toy ones, and Settings says plainly when the device has no voice for his country. Can be switched off. A speech failure never blocks the flow. |
 | Text → items | Claude with one tool, `record_request` (`lib/ai/parse.ts`, prompt `lib/ai/prompts/parse-request.ts`). |
 | Estimator | A price he said is used as said. A job he's priced before uses his past price. Anything else gets a **suggested** price with a one-line reason, and he has to confirm or change it before he can continue. |
 | Checks on the AI | A price marked "said" must appear in what was heard; a "past price" must be in his history; a quantity must have been said. If not, it becomes a suggestion to confirm. One retry with the exact problems, then a clear failure. Model and prompt version are saved on each document. |

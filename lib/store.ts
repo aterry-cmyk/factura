@@ -3,6 +3,7 @@ import { sql } from "./db";
 import { addDays, totals } from "./money";
 import type { CatalogEntry } from "./ai/prompts/parse-request";
 import type { Business, Customer, Doc, DocKind, DocStatus, LateFee, Lang, PaymentMethods, Settings } from "./types";
+import { DEFAULT_COUNTRY, isCountry } from "./voice";
 import type { DraftInput } from "./validate";
 
 type Row = Record<string, unknown>;
@@ -30,6 +31,8 @@ function toSettings(r: Row): Settings {
     lateFee: (r.late_fee as LateFee) ?? { type: "none" },
     paymentMethods: (r.payment_methods as PaymentMethods) ?? {},
     onboarded: Boolean(r.onboarded),
+    country: isCountry(r.country) ? r.country : DEFAULT_COUNTRY,
+    voiceOn: r.voice_on !== false,
   };
 }
 
@@ -40,6 +43,11 @@ export async function getSettings(): Promise<Settings> {
 
 export async function setLang(lang: Lang): Promise<void> {
   await sql()`update settings set lang = ${lang}, updated_at = now() where id = 1`;
+}
+
+export async function setVoice(v: { country?: string; voiceOn?: boolean }): Promise<void> {
+  if (v.country !== undefined) await sql()`update settings set country = ${v.country}, updated_at = now() where id = 1`;
+  if (v.voiceOn !== undefined) await sql()`update settings set voice_on = ${v.voiceOn}, updated_at = now() where id = 1`;
 }
 
 export async function saveBusiness(b: Business): Promise<void> {

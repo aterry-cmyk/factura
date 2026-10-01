@@ -150,6 +150,18 @@ const es = {
   connections: "Conexiones",
   connected: "Conectado",
   notConnected: "No conectado",
+  // voice
+  voiceTitle: "Voz",
+  country: "¿De qué país eres?",
+  countryHint: "La app te escucha y te habla con el español de tu país.",
+  voiceOnLabel: "La app me habla (lee lo que entendió y las preguntas)",
+  testVoice: "Probar la voz",
+  voiceSample: "Hola, soy tu asistente de facturas. Dime qué necesitas y te ayudo.",
+  voiceExact: (place: string) => `Este dispositivo tiene una voz de ${place}.`,
+  voiceNear: (place: string, voice: string) => `Este dispositivo no tiene una voz de ${place}; usará otra voz en español (${voice}). En otro teléfono o navegador puede haber una.`,
+  voiceNone: "Este dispositivo no tiene voces en español. Puedes seguir usando la app sin voz.",
+  voiceUnsupported: "Este navegador no puede hablar. Puedes seguir usando la app sin voz.",
+  listenAgain: "Escuchar otra vez",
   errorGeneric: "Algo salió mal. Inténtalo otra vez.",
 };
 
@@ -299,6 +311,17 @@ const en: Dict = {
   connections: "Connections",
   connected: "Connected",
   notConnected: "Not connected",
+  voiceTitle: "Voice",
+  country: "Which country are you from?",
+  countryHint: "The app listens and speaks in your country's Spanish.",
+  voiceOnLabel: "The app talks to me (reads what it understood and the questions)",
+  testVoice: "Test the voice",
+  voiceSample: "Hi, I'm your invoice assistant. Tell me what you need and I'll help.",
+  voiceExact: (place: string) => `This device has a voice from ${place}.`,
+  voiceNear: (place: string, voice: string) => `This device has no voice from ${place}; it will use another voice (${voice}). Another phone or browser may have one.`,
+  voiceNone: "This device has no voice for this language. You can keep using the app without voice.",
+  voiceUnsupported: "This browser can't speak. You can keep using the app without voice.",
+  listenAgain: "Listen again",
   errorGeneric: "Something went wrong. Please try again.",
 };
 

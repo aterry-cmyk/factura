@@ -1,5 +1,6 @@
 import { Header } from "@/components/Header";
 import { SettingsForm } from "@/components/SettingsForm";
+import { VoiceSettings } from "@/components/VoiceSettings";
 import { aiConfigured } from "@/lib/ai/config";
 import { dict } from "@/lib/i18n";
 import { emailConfigured, smsConfigured } from "@/lib/send";
@@ -25,6 +26,7 @@ export default async function SettingsPage() {
         hasLogo={s.hasLogo}
         business={{ name: s.name, ownerName: s.ownerName, address: s.address, phone: s.phone, email: s.email, website: s.website }}
       />
+      <VoiceSettings lang={s.lang} country={s.country} voiceOn={s.voiceOn} />
       <section className="card">
         <h3>{t.connections}</h3>
         <ul className="list">

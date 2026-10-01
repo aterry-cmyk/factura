@@ -24,7 +24,8 @@ function ctor(): RecognitionCtor | null {
 
 export type SpeechState = "idle" | "listening" | "unsupported" | "denied";
 
-export function useSpeech(lang: "es" | "en", onFinal: (text: string) => void) {
+/** locale: "es-MX", "es-PR", "en-US"… from lib/voice.ts localeFor. */
+export function useSpeech(locale: string, onFinal: (text: string) => void) {
   const [state, setState] = useState<SpeechState>("idle");
   const [interim, setInterim] = useState("");
   const rec = useRef<Recognition | null>(null);
@@ -37,11 +38,11 @@ export function useSpeech(lang: "es" | "en", onFinal: (text: string) => void) {
     return () => rec.current?.stop();
   }, []);
 
-  const start = useCallback(() => {
+  const begin = useCallback(function listen(lang: string) {
     const C = ctor();
     if (!C) return setState("unsupported");
     const r = new C();
-    r.lang = lang === "es" ? "es-US" : "en-US";
+    r.lang = lang;
     r.continuous = true;
     r.interimResults = true;
     r.onresult = (e) => {
@@ -55,6 +56,11 @@ export function useSpeech(lang: "es" | "en", onFinal: (text: string) => void) {
     };
     r.onerror = (e) => {
       if (e.error === "not-allowed" || e.error === "service-not-allowed") setState("denied");
+      // A browser that doesn't know this country's Spanish still knows US Spanish.
+      if (e.error === "language-not-supported" && lang !== "es-US" && lang.startsWith("es")) {
+        r.onend = null;
+        listen("es-US");
+      }
     };
     r.onend = () => {
       setInterim("");
@@ -63,7 +69,9 @@ export function useSpeech(lang: "es" | "en", onFinal: (text: string) => void) {
     rec.current = r;
     r.start();
     setState("listening");
-  }, [lang]);
+  }, []);
+
+  const start = useCallback(() => begin(locale), [begin, locale]);
 
   const stop = useCallback(() => {
     rec.current?.stop();

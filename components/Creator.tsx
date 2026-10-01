@@ -5,7 +5,9 @@ import { dict, US_STATES } from "@/lib/i18n";
 import { formatMoney, lineTotalCents, parseMoney, totals } from "@/lib/money";
 import type { Doc, DocKind, Lang, LateFee, PaymentMethods, PriceSource, Settings } from "@/lib/types";
 import { REMINDER_CHOICES } from "@/lib/types";
+import { localeFor, spokenSummary } from "@/lib/voice";
 import { useSpeech } from "./useSpeech";
+import { useVoice } from "./useVoice";
 
 interface EditItem {
   key: number;
@@ -82,10 +84,19 @@ export function Creator({ lang, defaults, ai, edit, children }: { lang: Lang; de
   const [suggestions, setSuggestions] = useState<{ id: string; name: string; company: string; email: string; phone: string }[]>([]);
 
   const appendHeard = useCallback((text: string) => setTranscript((prev) => (prev ? `${prev} ${text}` : text)), []);
-  const speech = useSpeech(lang, appendHeard);
+  const locale = localeFor(defaults.country, lang);
+  const speech = useSpeech(locale, appendHeard);
+  const voice = useVoice(locale, defaults.voiceOn);
+  const [summary, setSummary] = useState("");
+
+  function listen() {
+    voice.stop(); // never let the microphone hear the app talking
+    speech.start();
+  }
 
   async function understand() {
     speech.stop();
+    voice.prime();
     setBusy(true);
     setError("");
     const res = await fetch("/api/parse", {
@@ -113,6 +124,16 @@ export function Creator({ lang, defaults, ai, edit, children }: { lang: Lang; de
     setQuestions(p.questions);
     setAiMeta({ model: p.model, promptVersion: p.promptVersion });
     if (p.customerName) lookupCustomer(p.customerName);
+    const said = spokenSummary({
+      lang,
+      kind: p.kind,
+      customerName: p.customerName,
+      items: p.items.map((i) => ({ description: i.description, quantity: i.quantity, unitPriceCents: i.unitPriceCents, suggested: i.needsConfirm })),
+      totalCents: totals(p.items.map((i) => ({ ...i })), 0).totalCents,
+      questions: p.questions,
+    });
+    setSummary(said);
+    voice.speak(said);
     setStage("review");
   }
 
@@ -156,6 +177,21 @@ export function Creator({ lang, defaults, ai, edit, children }: { lang: Lang; de
   const steps = kind === "invoice" ? ["customer", "business", "tax", "due", "late", "pay"] : ["customer", "business", "tax", "due", "pay"];
   const current = steps[step];
 
+  function stepQuestion(name: string): string {
+    if (name === "customer") return t.qCustomer;
+    if (name === "business") return t.qBusiness;
+    if (name === "tax") return `${t.qState} ${t.qTax}`;
+    if (name === "due") return kind === "invoice" ? `${t.qDue} ${t.qReminders}` : lang === "es" ? "¿Por cuántos días vale el presupuesto?" : "How many days is the estimate valid?";
+    if (name === "late") return t.qLate;
+    if (name === "pay") return t.qPay;
+    return "";
+  }
+
+  function goToStep(next: number) {
+    setStep(next);
+    voice.speak(stepQuestion(steps[next]));
+  }
+
   function stepOk(): boolean {
     if (current === "customer") return customer.name.trim().length > 0;
     if (current === "business") return business.name.trim().length > 0;
@@ -167,6 +203,7 @@ export function Creator({ lang, defaults, ai, edit, children }: { lang: Lang; de
   }
 
   async function create() {
+    voice.stop();
     setBusy(true);
     setErrors([]);
     const body = {
@@ -212,7 +249,7 @@ export function Creator({ lang, defaults, ai, edit, children }: { lang: Lang; de
         {speech.state !== "unsupported" && (
           <button
             className={`mic${listening ? " on" : ""}`}
-            onClick={listening ? speech.stop : speech.start}
+            onClick={listening ? speech.stop : listen}
             aria-label={listening ? t.listening : t.tapToTalk}
             data-testid="mic"
           >
@@ -274,6 +311,11 @@ export function Creator({ lang, defaults, ai, edit, children }: { lang: Lang; de
             <p className="muted small">
               <strong>{t.heard}:</strong> “{transcript}”
             </p>
+          )}
+          {summary && defaults.voiceOn && voice.supported && voice.match !== "none" && (
+            <div>
+              <button className="btn small" onClick={() => voice.speak(summary)} data-testid="listen-again">🔊 {t.listenAgain}</button>
+            </div>
           )}
           {questions.length > 0 && (
             <div className="note warn">
@@ -339,7 +381,7 @@ export function Creator({ lang, defaults, ai, edit, children }: { lang: Lang; de
         </div>
         <div className="footer-bar">
           {!edit && <button className="btn" onClick={() => setStage("speak")}>{t.back}</button>}
-          <button className="btn primary" disabled={!itemsOk || !customer.name.trim()} onClick={() => { setStage("wizard"); setStep(0); }}>
+          <button className="btn primary" disabled={!itemsOk || !customer.name.trim()} onClick={() => { setStage("wizard"); goToStep(0); }}>
             {t.next}
           </button>
         </div>
@@ -511,11 +553,11 @@ export function Creator({ lang, defaults, ai, edit, children }: { lang: Lang; de
         )}
       </div>
       <div className="footer-bar">
-        <button className="btn" onClick={() => (step === 0 ? setStage("review") : setStep(step - 1))}>{t.back}</button>
+        <button className="btn" onClick={() => (step === 0 ? (voice.stop(), setStage("review")) : goToStep(step - 1))}>{t.back}</button>
         {last ? (
           <button className="btn primary" disabled={busy || !stepOk()} onClick={create}>{busy ? t.generating : t.generate}</button>
         ) : (
-          <button className="btn primary" disabled={!stepOk()} onClick={() => setStep(step + 1)}>{t.next}</button>
+          <button className="btn primary" disabled={!stepOk()} onClick={() => goToStep(step + 1)}>{t.next}</button>
         )}
       </div>
     </section>
