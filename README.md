@@ -20,21 +20,39 @@ One sign-in. No accounting, no payment processing. It shows his payment instruct
 | Reminders | `/api/cron/reminders`, daily through Vercel Cron. Starts on the due date, repeats every N days, stops when paid or after 6. Includes the late fee owed that day. |
 | Estimates | Same flow; "Turn into invoice" copies it with today's saved terms. |
 
-## Setup
+## Setup (Supabase + Vercel)
 
-1. **Database**: any Postgres. On Supabase, create a project and copy the connection string (Project Settings → Database). Then:
-   ```bash
-   cp .env.example .env.local   # fill it in
-   npm install
-   DATABASE_URL=... npm run db:migrate
-   ```
-2. **Sign-in**: set `OWNER_PASSWORD` and `SESSION_SECRET` (`openssl rand -hex 32`).
-3. **Assistant**: `ANTHROPIC_API_KEY`. The model is set only in `lib/ai/config.ts` (override with `ANTHROPIC_MODEL`).
-4. **Email (optional)**: verify a domain on [Resend](https://resend.com), then set `RESEND_API_KEY` and `EMAIL_FROM`. Replies go to the business email he enters.
-5. **SMS (optional)**: on [Twilio](https://twilio.com), set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `TWILIO_FROM`. US texting needs A2P 10DLC registration, which takes days, so start it early.
-6. **Deploy** on Vercel, set the same variables plus `APP_URL` (the address printed in links) and `CRON_SECRET`. `vercel.json` runs reminders daily at 15:00 UTC.
+**1. Supabase**
+- Create a project (any region near the client). Save the database password.
+- Create the tables, either way:
+  - SQL Editor → paste `supabase/migrations/20261001000000_init.sql` → Run; or
+  - `npx supabase link --project-ref <ref>` then `npx supabase db push`.
+- Copy the connection string: **Connect → Transaction pooler** (port `6543`). That's `DATABASE_URL`. The app turns off prepared statements on that port automatically, which the pooler requires.
+- Nothing else in Supabase is used: no Supabase Auth, no Storage (the logo is kept in the database). RLS is on with no policies, so the public API can't read the tables.
 
-Settings → Connections shows which of these are connected.
+**2. Vercel**
+- Import the repo (framework: Next.js, no build settings to change).
+- Environment variables (Production):
+
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | the Supabase transaction-pooler string |
+| `OWNER_PASSWORD` | the client's password |
+| `SESSION_SECRET` | `openssl rand -hex 32` |
+| `ANTHROPIC_API_KEY` | from console.anthropic.com |
+| `APP_URL` | the final address, e.g. `https://facturas.example.com` (printed in links customers get) |
+| `CRON_SECRET` | `openssl rand -hex 32` (Vercel sends it to the reminder job) |
+| `RESEND_API_KEY`, `EMAIL_FROM` | optional, email |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` | optional, SMS |
+
+- Deploy. `vercel.json` schedules `/api/cron/reminders` daily at 15:00 UTC (once a day works on the Hobby plan too).
+- Sign in at the address, open **Ajustes**: Connections shows what's connected; add the logo there.
+
+**3. Email (Resend)**: add and verify the client's domain (DNS records), then set `EMAIL_FROM` like `Pintura Hernández <facturas@sudominio.com>`. Replies go to the business email he enters in the form.
+
+**4. SMS (Twilio)**: buy a US number, register A2P 10DLC (sole-proprietor registration is the quick path; it takes days), then set the three variables.
+
+**Local development**: `cp .env.example .env.local`, fill in `DATABASE_URL` (Supabase or a local Postgres), `npm install`, `npm run db:migrate`, `npm run dev`.
 
 ## Tests
 
