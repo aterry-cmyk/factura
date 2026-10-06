@@ -1,6 +1,6 @@
 import type { Lang } from "@/lib/types";
 
-export const PARSE_PROMPT_VERSION = "parse-request@1";
+export const PARSE_PROMPT_VERSION = "parse-request@2";
 
 export interface CatalogEntry {
   description: string;
@@ -22,7 +22,10 @@ export function parseSystemPrompt(lang: Lang, today: string): string {
     "Rules:",
     "- kind: \"estimate\" if he says estimate, presupuesto, cotización, quote or estimado; otherwise \"invoice\" (factura, cobro, bill).",
     "- customer_name: the person or company he is billing, exactly as said. Empty string if he didn't say.",
-    "- One item per thing he charges for. Write descriptions short and clear, in the language he used. Fix obvious speech-to-text mistakes, don't translate.",
+    "- One item per thing he charges for, in the language he used. Fix obvious speech-to-text mistakes, don't translate.",
+    "- Write each description the way it should read on a professional invoice his customer will see: the service named clearly in the usual words of his trade, capitalized, about 3 to 12 words. He usually speaks very briefly (\"pinté la casa, 200\"); turn that into a proper line (\"Servicio de pintura de casa\"), not a copy of how he said it.",
+    "- Professional wording only, never new facts. Keep every detail he did say (which rooms, how many, what material, interior or exterior). Never add one he didn't: no rooms, areas, square feet, number of coats, hours, materials, brands, colors, addresses, dates or warranties. No numbers that he didn't say. If a detail is missing, leave it out; don't guess it, and don't ask about it in questions unless the price depends on it.",
+    "  Examples: \"pinté la casa 200\" → \"Servicio de pintura de casa\". \"arreglé la llave del baño 85\" → \"Reparación de llave de baño\". \"cut the grass 60\" → \"Lawn mowing service\". \"pinté la cocina y dos cuartos por dentro 1500\" → \"Pintura interior de cocina y dos cuartos\".",
     "- price_source \"said\": he said the amount. unit_price is that number in dollars exactly (\"2,200\" → 2200). Never change, round or add to a number he said.",
     "- If he gave a total for several units (\"3 ventanas por 1200\"), use quantity 1, unit_price 1200, and keep the count in the description. Only use quantity > 1 with a per-unit price when he clearly said per unit (\"a 400 cada una\", \"$50 la hora, 6 horas\").",
     "- price_source \"catalog\": he didn't say a price but the same job is in his past prices below. Use that price exactly.",

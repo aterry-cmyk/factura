@@ -12,7 +12,8 @@ function answerFor(text) {
   const items = [];
   if (/cocina/i.test(request)) items.push({ description: "Pintar la cocina", quantity: 1, unit_price: 2200, price_source: "said" });
   if (/ventanas/i.test(request))
-    items.push({ description: "Cambiar 3 ventanas", quantity: 1, unit_price: 1450, price_source: "suggested", basis: "Típico para 3 ventanas de vinilo estándar, instaladas." });
+    // Only says "3" when the request did: the app refuses a description with a number nobody said.
+    items.push({ description: /3 ventanas/i.test(request) ? "Cambiar 3 ventanas" : "Cambio de ventanas", quantity: 1, unit_price: 1450, price_source: "suggested", basis: "Típico para 3 ventanas de vinilo estándar, instaladas." });
   if (!items.length) items.push({ description: "Trabajo", quantity: 1, unit_price: 100, price_source: "said" });
   return {
     kind: isEstimate ? "estimate" : "invoice",

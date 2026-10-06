@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type Anthropic from "@anthropic-ai/sdk";
-import { amountsHeard, checkParsed, parseRequest, type AiClient } from "@/lib/ai/parse";
+import { amountsHeard, checkParsed, inventedNumbers, parseRequest, type AiClient } from "@/lib/ai/parse";
 
 const tool = (input: unknown, id = "t1"): Anthropic.Message =>
   ({ id: "m", type: "message", role: "assistant", model: "x", stop_reason: "tool_use", stop_sequence: null,
@@ -80,7 +80,7 @@ describe("parseRequest", () => {
     const r = await parseRequest({ transcript: "presupuesto para Juan, cambiar 3 ventanas", lang: "es", catalog: [{ description: "Pintar <b>baño</b>", unitPriceCents: 90000 }], today: "2026-10-01", client });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.value).toMatchObject({ kind: "estimate", customerName: "Juan", promptVersion: "parse-request@1" });
+    expect(r.value).toMatchObject({ kind: "estimate", customerName: "Juan", promptVersion: "parse-request@2" });
     expect(r.value.items[0].needsConfirm).toBe(true);
     const p = client.calls[0];
     expect(p.tool_choice).toEqual({ type: "auto" });
@@ -91,7 +91,7 @@ describe("parseRequest", () => {
 
   it("retries once with the exact problems, then succeeds", async () => {
     const client = scripted(tool({ kind: "invoice", customer_name: "", items: [] }), tool(good, "t2"));
-    const r = await parseRequest({ transcript: "presupuesto para Juan", lang: "es", catalog: [], today: "2026-10-01", client });
+    const r = await parseRequest({ transcript: "presupuesto para Juan, cambiar 3 ventanas", lang: "es", catalog: [], today: "2026-10-01", client });
     expect(r.ok).toBe(true);
     const retry = client.calls[1].messages.at(-1)!;
     expect(JSON.stringify(retry.content)).toContain("return at least one item");
@@ -109,5 +109,51 @@ describe("parseRequest", () => {
     const client = scripted();
     expect(await parseRequest({ transcript: " ", lang: "es", catalog: [], today: "2026-10-01", client })).toEqual({ ok: false, error: "empty" });
     expect(client.calls.length).toBe(0);
+  });
+});
+
+describe("professional descriptions", () => {
+  const answer = (description: string, price = 200) => ({
+    kind: "invoice", customer_name: "", notes: "", questions: [],
+    items: [{ description, quantity: 1, unit_price: price, price_source: "said" }],
+  });
+
+  it("accepts a professional write-up that adds wording but no facts", () => {
+    const r = checkParsed(answer("Servicio de pintura de casa"), "pinté la casa, 200", [], "es");
+    expect(r.problems).toEqual([]);
+    expect(r.value!.items[0]).toMatchObject({ description: "Servicio de pintura de casa", unitPriceCents: 20000, source: "said" });
+  });
+
+  it("refuses a description with a number he didn't say (coats, square feet, hours)", () => {
+    for (const d of ["Pintura de casa, 2 capas", "Pintura interior de 300 pies²", "Servicio de pintura (8 horas)"]) {
+      const r = checkParsed(answer(d), "pinté la casa, 200", [], "es");
+      expect(r.value, d).toBeUndefined();
+      expect(r.problems[0], d).toMatch(/which he didn't say/);
+    }
+  });
+
+  it("keeps numbers he did say, written however he said them, and numbers from his past items", () => {
+    expect(inventedNumbers("Pintura de cocina y 2 cuartos", "pinté la cocina y 2 cuartos 1500", [])).toEqual([]);
+    expect(inventedNumbers("Instalación de 3 ventanas", "cambié 3 ventanas por 1,200", [])).toEqual([]);
+    expect(inventedNumbers("Paquete de mantenimiento 12 meses", "el mantenimiento de siempre", [{ description: "Paquete de mantenimiento 12 meses", unitPriceCents: 9000 }])).toEqual([]);
+    expect(inventedNumbers("Pintura de 2 cuartos", "pinté los cuartos 500", [])).toEqual(["2"]);
+  });
+
+  it("sends an invented detail back once with the reason, then keeps the corrected line", async () => {
+    const client = scripted(tool(answer("Pintura exterior de casa, 2 capas")), tool(answer("Servicio de pintura de casa"), "t2"));
+    const r = await parseRequest({ transcript: "pinté la casa, 200", lang: "es", catalog: [], today: "2026-10-06", client });
+    expect(r.ok && r.value.items[0].description).toBe("Servicio de pintura de casa");
+    expect(JSON.stringify(client.calls[1].messages.at(-1)!.content)).toContain("which he didn't say");
+  });
+
+  it("tells the model to write professionally and never add facts", () => {
+    const client = scripted(tool(answer("Servicio de pintura de casa")));
+    return parseRequest({ transcript: "pinté la casa, 200", lang: "es", catalog: [], today: "2026-10-06", client }).then((r) => {
+      const system = String(client.calls[0].system);
+      expect(system).toContain("professional invoice");
+      expect(system).toContain("never new facts");
+      expect(system).toContain("No numbers that he didn't say");
+      expect(r.ok && r.value.promptVersion).toBe("parse-request@2");
+    });
   });
 });

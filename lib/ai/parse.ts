@@ -84,6 +84,26 @@ function quantityHeard(quantity: number, transcript: string): boolean {
 
 const asString = (v: unknown, max: number): string => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
+/** The plain numbers in some text, with thousands separators removed: "2,200 y 3" → {"2200","3"}. */
+function numbersIn(text: string): Set<string> {
+  const out = new Set<string>();
+  for (const m of text.matchAll(/\d[\d.,]*\d|\d/g)) {
+    out.add(m[0].replace(/[.,](?=\d{3}\b)/g, ""));
+    for (const part of m[0].split(/[.,]/)) out.add(part);
+  }
+  return out;
+}
+
+/**
+ * The descriptions are rewritten to read professionally, so this is the line the wording can't
+ * cross: a number in a description (coats, square feet, hours, rooms) must be one he said or one
+ * already in his past items. Anything else is an invented fact.
+ */
+export function inventedNumbers(description: string, transcript: string, catalog: CatalogEntry[]): string[] {
+  const allowed = numbersIn([transcript, ...catalog.map((c) => c.description)].join(" "));
+  return [...numbersIn(description)].filter((n) => !allowed.has(n) && !/[.,]/.test(n));
+}
+
 /**
  * Check the model's answer against what was heard and what he charged before. A "said" price
  * that isn't in the transcript, or a "catalog" price that isn't in his catalog, is never trusted:
@@ -110,6 +130,12 @@ export function checkParsed(
     const quantity = typeof it.quantity === "number" && it.quantity > 0 ? it.quantity : NaN;
     const price = typeof it.unit_price === "number" && it.unit_price >= 0 ? it.unit_price : NaN;
     if (!description) problems.push(`items[${i}].description is empty.`);
+    const invented = description ? inventedNumbers(description, transcript, catalog) : [];
+    if (invented.length) {
+      problems.push(
+        `items[${i}].description "${description}" has ${invented.join(", ")}, which he didn't say. Keep the professional wording but use only details he said.`,
+      );
+    }
     if (!Number.isFinite(quantity)) problems.push(`items[${i}].quantity must be a positive number.`);
     if (!Number.isFinite(price)) problems.push(`items[${i}].unit_price must be a number of dollars.`);
     if (!description || !Number.isFinite(quantity) || !Number.isFinite(price)) return [];
