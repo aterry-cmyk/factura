@@ -32,7 +32,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
       >
       {!editDoc && (
         <section className="card">
-          <h3>{t.recent}</h3>
+          <div className="row">
+            <h3 className="grow" style={{ margin: 0 }}>{t.recent}</h3>
+            {docs.length > 0 && <Link href="/documents" className="btn small ghost">{t.seeAll} →</Link>}
+          </div>
           {docs.length === 0 ? (
             <p className="muted">{t.nothingYet}</p>
           ) : (

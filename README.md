@@ -19,6 +19,7 @@ One sign-in. No accounting, no payment processing. It shows his payment instruct
 | Totals | Server-side, whole cents (`lib/money.ts`). Late fees: flat once, or % per started month after the grace days, capped at 12 months. |
 | PDF | `lib/pdf.ts` (pdf-lib, Letter, logo, multi-page). |
 | Send | Email with the PDF attached via Resend; text with a link via Twilio (`lib/send.ts`, `lib/deliver.ts`). Without keys the buttons say **setup needed**. Nothing is faked. Every attempt goes into the document's history with the provider's real answer. |
+| All documents | `/documents` ("Facturas" in the header, "Ver todas" on Home): totals (to collect with today's late fees, overdue, collected this month, drafts), search by customer, company, number or item, filters by status (overdue = sent invoices past due), kind and dates, 50 per page. "Descargar CSV" exports exactly what's filtered (`/api/documents/export`; cells can't run as formulas). Bulk mark paid, void (asks first) or send reminders (`/api/documents/bulk`, up to 100): each document follows the same rules as its own buttons (`lib/doc-list.ts` `ALLOWED`), and the ones that don't fit are skipped and counted. |
 | Customer link | `/i/<token>`: the document and its PDF, no sign-in. Opens once the document is sent or its link is copied. |
 | Reminders | `/api/cron/reminders`, daily through Vercel Cron. Starts on the due date, repeats every N days, stops when paid or after 6. Includes the late fee owed that day. |
 | Estimates | Same flow; "Turn into invoice" copies it with today's saved terms. |

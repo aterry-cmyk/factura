@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { sql } from "./db";
-import { addDays, totals } from "./money";
+import { addDays, amountDueCents, totals } from "./money";
+import type { DocFilters } from "./doc-list";
 import type { CatalogEntry } from "./ai/prompts/parse-request";
 import type { Business, Customer, Doc, DocKind, DocStatus, LateFee, Lang, PaymentMethods, Settings } from "./types";
 import { DEFAULT_COUNTRY, isCountry } from "./voice";
@@ -187,6 +188,69 @@ export async function getByToken(token: string): Promise<Doc | null> {
 
 export async function listDocuments(limit = 50): Promise<Doc[]> {
   const rows = await sql()`select * from documents order by created_at desc limit ${limit}`;
+  return rows.map(toDoc);
+}
+
+/**
+ * The owner's full list: search (customer, company, number, item descriptions), status (with
+ * "overdue" = sent invoices past their due date), kind and issue-date range, newest first.
+ */
+export async function searchDocuments(
+  f: DocFilters,
+  today: string,
+  page: { limit: number; offset: number } | null,
+): Promise<{ docs: Doc[]; total: number }> {
+  const db = sql();
+  const like = `%${f.q.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  const conds = [
+    f.q
+      ? db`(lower(customer->>'name') like ${like} or lower(customer->>'company') like ${like}
+          or lower(number) like ${like} or lower(items::text) like ${like})`
+      : db`true`,
+    f.kind === "all" ? db`true` : db`kind = ${f.kind}`,
+    f.status === "all"
+      ? db`true`
+      : f.status === "overdue"
+        ? db`kind = 'invoice' and status = 'sent' and due_date < ${today}`
+        : db`status = ${f.status}`,
+    f.from ? db`issue_date >= ${f.from}` : db`true`,
+    f.to ? db`issue_date <= ${f.to}` : db`true`,
+  ];
+  const where = conds.reduce((a, c) => db`${a} and ${c}`);
+  const [{ count }] = await db`select count(*)::int as count from documents where ${where}`;
+  const rows = page
+    ? await db`select * from documents where ${where} order by created_at desc limit ${page.limit} offset ${page.offset}`
+    : await db`select * from documents where ${where} order by created_at desc limit 5000`;
+  return { docs: rows.map(toDoc), total: n(count) };
+}
+
+/** The money at a glance: what's owed (with late fees as of today), overdue, and paid this month. */
+export async function documentTotals(today: string): Promise<{
+  owed: { count: number; cents: number };
+  overdue: { count: number; cents: number };
+  paidThisMonth: { count: number; cents: number };
+  drafts: number;
+}> {
+  const db = sql();
+  const open = (await db`select * from documents where kind = 'invoice' and status = 'sent'`).map(toDoc);
+  const late = open.filter((d) => d.dueDate < today);
+  const sum = (docs: Doc[]) => docs.reduce((t, d) => t + amountDueCents(d, today), 0);
+  const month = today.slice(0, 7);
+  const [paid] = await db`select count(*)::int as count, coalesce(sum(total_cents), 0)::bigint as cents from documents
+    where kind = 'invoice' and status = 'paid' and to_char(paid_at at time zone 'UTC', 'YYYY-MM') = ${month}`;
+  const [drafts] = await db`select count(*)::int as count from documents where status = 'draft'`;
+  return {
+    owed: { count: open.length, cents: sum(open) },
+    overdue: { count: late.length, cents: sum(late) },
+    paidThisMonth: { count: n(paid.count), cents: n(paid.cents) },
+    drafts: n(drafts.count),
+  };
+}
+
+export async function getDocuments(ids: string[]): Promise<Doc[]> {
+  const valid = ids.filter((id) => /^[0-9a-f-]{36}$/i.test(id));
+  if (!valid.length) return [];
+  const rows = await sql()`select * from documents where id in ${sql()(valid)}`;
   return rows.map(toDoc);
 }
 

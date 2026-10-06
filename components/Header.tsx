@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { dict } from "@/lib/i18n";
 import type { Lang } from "@/lib/types";
 
 export function Header({ lang, settingsLabel, signOutLabel }: { lang: Lang; settingsLabel: string; signOutLabel: string }) {
@@ -28,6 +29,9 @@ export function Header({ lang, settingsLabel, signOutLabel }: { lang: Lang; sett
         <span className="brand-mark">F</span> Factura
       </Link>
       <nav>
+        <Link className="btn small ghost" href="/documents">
+          {dict(lang).allDocs}
+        </Link>
         <button className="btn small ghost" onClick={switchLang} disabled={busy} aria-label="Language">
           {lang === "es" ? "English" : "Español"}
         </button>

@@ -64,6 +64,51 @@ suite("database", () => {
     expect(c.email).toBe("juan@example.com");
   });
 
+  it("finds documents by customer, number or item, by status (overdue too), kind and date", async () => {
+    const a = await store.createDocument(draft(), { today: "2026-09-01" });
+    const b = await store.createDocument(draft({ customer: { name: "Ana López", company: "Café Luna", email: "", phone: "" }, items: [{ description: "Reparación de techo 50%_off", quantity: 1, unitPriceCents: 90000, source: "said" }] }), { today: "2026-09-20" });
+    const e = await store.createDocument(draft({ kind: "estimate" }), { today: "2026-09-25" });
+    await store.markSent(a.id);
+    await store.markSent(b.id);
+    const today = "2026-09-26";
+    const { parseFilters } = await import("@/lib/doc-list");
+    const find = async (p: Record<string, string>) => (await store.searchDocuments(parseFilters(p), today, null)).docs.map((d) => d.number).sort();
+    expect(await find({})).toEqual(["F-0001", "F-0002", "P-0001"]);
+    expect(await find({ q: "café" })).toEqual(["F-0002"]);
+    expect(await find({ q: "techo" })).toEqual(["F-0002"]);
+    expect(await find({ q: "f-0001" })).toEqual(["F-0001"]);
+    expect(await find({ q: "50%_" })).toEqual(["F-0002"]);
+    expect(await find({ q: "%" })).toEqual(["F-0002"]);
+    expect(await find({ status: "overdue" })).toEqual(["F-0001"]);
+    expect(await find({ status: "sent" })).toEqual(["F-0001", "F-0002"]);
+    expect(await find({ status: "draft" })).toEqual(["P-0001"]);
+    expect(await find({ kind: "estimate" })).toEqual(["P-0001"]);
+    expect(await find({ from: "2026-09-15", to: "2026-09-21" })).toEqual(["F-0002"]);
+    const page = await store.searchDocuments(parseFilters({}), today, { limit: 2, offset: 2 });
+    expect([page.total, page.docs.length]).toEqual([3, 1]);
+    expect(e.number).toBe("P-0001");
+  });
+
+  it("totals what's owed with today's late fees, what's overdue, and what was paid this month", async () => {
+    const a = await store.createDocument(draft(), { today: "2026-09-01" });
+    const b = await store.createDocument(draft(), { today: "2026-09-20" });
+    const c = await store.createDocument(draft(), { today: "2026-09-20" });
+    await store.createDocument(draft(), { today: "2026-09-20" });
+    await store.markSent(a.id);
+    await store.markSent(b.id);
+    await store.setStatus(c.id, "paid");
+    const today = new Date().toISOString().slice(0, 10);
+    const t = await store.documentTotals(today);
+    const total = Math.round(365000 * 1.06);
+    const { amountDueCents } = await import("@/lib/money");
+    const docA = (await store.getDocument(a.id))!;
+    const docB = (await store.getDocument(b.id))!;
+    expect(t.owed).toEqual({ count: 2, cents: amountDueCents(docA, today) + amountDueCents(docB, today) });
+    expect(t.overdue.count).toBe([docA, docB].filter((d) => d.dueDate < today).length);
+    expect(t.paidThisMonth).toEqual({ count: 1, cents: total });
+    expect(t.drafts).toBe(1);
+  });
+
   it("learns prices, but never from unconfirmed suggestions or void documents", async () => {
     const d = await store.createDocument(draft(), { today: "2026-10-01" });
     expect(await store.catalog()).toEqual([{ description: "Pintar cocina", unitPriceCents: 220000 }]);

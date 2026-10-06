@@ -96,7 +96,8 @@ test("voice request → confirm the estimator's price → questions in Spanish �
   await expect(page.getByText("Enviada ✓")).toBeVisible();
 
   const sent = await calls(page);
-  const email = JSON.parse(sent.find((c) => c.url === "/emails")!.body);
+  // The newest email: other specs send their own to the same stand-in earlier in the run.
+  const email = JSON.parse([...sent].reverse().find((c) => c.url === "/emails")!.body);
   expect(email.to).toEqual(["juan@example.com"]);
   expect(email.attachments[0].filename).toBe("F-0001.pdf");
   const sms = new URLSearchParams(sent.find((c) => c.url.includes("Messages.json"))!.body);
