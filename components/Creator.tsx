@@ -24,7 +24,7 @@ interface Parsed {
   customerName: string;
   items: { description: string; quantity: number; unitPriceCents: number; source: PriceSource; basis?: string; needsConfirm: boolean }[];
   notes: string;
-  questions: string[];
+  questions: { question: string; options: string[] }[];
   model: string;
   promptVersion: string;
 }
@@ -46,7 +46,7 @@ function toEditItems(items: { description: string; quantity: number; unitPriceCe
   }));
 }
 
-type Stage = "speak" | "review" | "wizard";
+type Stage = "speak" | "details" | "review" | "wizard";
 
 export function Creator({ lang, defaults, ai, cloudVoice = false, edit, children }: { lang: Lang; defaults: Settings; ai: boolean; cloudVoice?: boolean; edit?: Doc; children?: React.ReactNode }) {
   const t = dict(lang);
@@ -55,7 +55,12 @@ export function Creator({ lang, defaults, ai, cloudVoice = false, edit, children
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [errors, setErrors] = useState<string[]>([]);
-  const [questions, setQuestions] = useState<string[]>([]);
+  // Follow-up questions from the first pass, and his answers, asked in a pop-up before review.
+  const [followUps, setFollowUps] = useState<{ question: string; options: string[] }[]>([]);
+  const [answers, setAnswers] = useState<string[]>([]);
+  const [asking, setAsking] = useState(0);
+  const [draftAnswer, setDraftAnswer] = useState("");
+  const [firstPass, setFirstPass] = useState<Parsed | null>(null);
   const [aiMeta, setAiMeta] = useState<{ model: string; promptVersion: string } | null>(null);
 
   const [kind, setKind] = useState<DocKind>(edit?.kind ?? "invoice");
@@ -94,15 +99,15 @@ export function Creator({ lang, defaults, ai, cloudVoice = false, edit, children
     speech.start();
   }
 
-  async function understand() {
-    speech.stop();
-    voice.prime();
+  const answerSpeech = useSpeech(locale, useCallback((text: string) => setDraftAnswer((d) => (d ? `${d} ${text}` : text)), []));
+
+  async function parse(withAnswers?: { question: string; answer: string }[]): Promise<Parsed | null> {
     setBusy(true);
     setError("");
     const res = await fetch("/api/parse", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ transcript }),
+      body: JSON.stringify(withAnswers ? { transcript, answers: withAnswers } : { transcript }),
     }).catch(() => null);
     setBusy(false);
     if (!res || !res.ok) {
@@ -114,14 +119,58 @@ export function Creator({ lang, defaults, ai, cloudVoice = false, edit, children
             : "I couldn't make out the items. Say it again with each thing and its price, or type them yourself."
           : t.errorGeneric,
       );
+      return null;
+    }
+    return (await res.json()) as Parsed;
+  }
+
+  async function understand() {
+    speech.stop();
+    voice.prime();
+    const p = await parse();
+    if (!p) return;
+    if (p.questions.length) {
+      // Ask first; the invoice is written once he's answered or skipped.
+      setFirstPass(p);
+      setFollowUps(p.questions);
+      setAnswers(p.questions.map(() => ""));
+      setAsking(0);
+      setDraftAnswer("");
+      setStage("details");
+      voice.speak(`${t.detailsTitle}. ${p.questions[0].question}`);
       return;
     }
-    const p = (await res.json()) as Parsed;
+    showParsed(p);
+  }
+
+  function answerQuestion(value: string) {
+    answerSpeech.stop();
+    const next = answers.map((a, i) => (i === asking ? value.trim() : a));
+    setAnswers(next);
+    setDraftAnswer("");
+    if (asking + 1 < followUps.length) {
+      setAsking(asking + 1);
+      voice.speak(followUps[asking + 1].question);
+    } else {
+      finishDetails(next);
+    }
+  }
+
+  async function finishDetails(given: string[]) {
+    answerSpeech.stop();
+    voice.prime();
+    const answered = followUps.map((f, i) => ({ question: f.question, answer: given[i] ?? "" })).filter((a) => a.answer);
+    // Nothing answered: the first pass already has everything he said.
+    const p = answered.length ? await parse(answered) : firstPass;
+    if (!p) return;
+    showParsed(p);
+  }
+
+  function showParsed(p: Parsed) {
     setKind(p.kind);
     setCustomer((c) => ({ ...c, name: p.customerName || c.name }));
     setItems(toEditItems(p.items, true));
     setNotes(p.notes);
-    setQuestions(p.questions);
     setAiMeta({ model: p.model, promptVersion: p.promptVersion });
     if (p.customerName) lookupCustomer(p.customerName);
     const said = spokenSummary({
@@ -130,7 +179,7 @@ export function Creator({ lang, defaults, ai, cloudVoice = false, edit, children
       customerName: p.customerName,
       items: p.items.map((i) => ({ description: i.description, quantity: i.quantity, unitPriceCents: i.unitPriceCents, suggested: i.needsConfirm })),
       totalCents: totals(p.items.map((i) => ({ ...i })), 0).totalCents,
-      questions: p.questions,
+      questions: [],
     });
     setSummary(said);
     voice.speak(said);
@@ -238,9 +287,11 @@ export function Creator({ lang, defaults, ai, cloudVoice = false, edit, children
     setErrors(json.errors?.map((e) => e.replace(/^[\w.]+: /, "")) ?? [t.errorGeneric]);
   }
 
-  // ---------- speak ----------
-  if (stage === "speak") {
+  // ---------- speak (and the follow-up questions over it) ----------
+  if (stage === "speak" || stage === "details") {
     const listening = speech.state === "listening";
+    const q = followUps[asking];
+    const hearingAnswer = answerSpeech.state === "listening";
     return (
       <>
       <section className="card center stack">
@@ -286,6 +337,54 @@ export function Creator({ lang, defaults, ai, cloudVoice = false, edit, children
         </div>
       </section>
       {children}
+      {stage === "details" && q && (
+        <div className="overlay" role="presentation">
+          <section className="card dialog stack" role="dialog" aria-modal="true" aria-labelledby="details-q" data-testid="details">
+            <div className="row">
+              <span className="muted small grow">{t.detailsTitle} · {asking + 1} {t.of} {followUps.length}</span>
+              <button className="btn small ghost" onClick={() => answerQuestion("")} disabled={busy}>{t.skip}</button>
+            </div>
+            <div className="progress"><span style={{ width: `${((asking + 1) / followUps.length) * 100}%` }} /></div>
+            <h2 id="details-q" style={{ margin: "4px 0" }}>{q.question}</h2>
+            {q.options.length > 0 && (
+              <div className="chips">
+                {q.options.map((o) => (
+                  <button key={o} className="chip big" onClick={() => answerQuestion(o)} disabled={busy}>{o}</button>
+                ))}
+              </div>
+            )}
+            <div className="row">
+              <input
+                className="grow"
+                aria-label={t.otherAnswer}
+                placeholder={t.otherAnswer}
+                value={draftAnswer + (answerSpeech.interim ? ` ${answerSpeech.interim}` : "")}
+                onChange={(e) => setDraftAnswer(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && draftAnswer.trim()) answerQuestion(draftAnswer); }}
+                disabled={busy}
+              />
+              {answerSpeech.state !== "unsupported" && (
+                <button
+                  className={`btn small${hearingAnswer ? " danger" : ""}`}
+                  aria-label={hearingAnswer ? t.listening : t.tapToTalk}
+                  onClick={() => (hearingAnswer ? answerSpeech.stop() : (voice.stop(), answerSpeech.start()))}
+                  disabled={busy}
+                >
+                  🎤
+                </button>
+              )}
+              <button className="btn small primary" onClick={() => answerQuestion(draftAnswer)} disabled={busy || !draftAnswer.trim()}>{t.next}</button>
+            </div>
+            <p className="muted small" style={{ margin: 0 }}>{t.detailsHint}</p>
+            {error && <p className="note bad" role="alert">{error}</p>}
+            {busy ? (
+              <p className="note" role="status">{t.writingInvoice}</p>
+            ) : (
+              <button className="btn ghost" onClick={() => finishDetails(answers.map((a, i) => (i < asking ? a : "")))}>{t.skipAll}</button>
+            )}
+          </section>
+        </div>
+      )}
       </>
     );
   }
@@ -315,12 +414,6 @@ export function Creator({ lang, defaults, ai, cloudVoice = false, edit, children
           {summary && defaults.voiceOn && voice.supported && voice.match !== "none" && (
             <div>
               <button className="btn small" onClick={() => voice.speak(summary)} data-testid="listen-again">🔊 {t.listenAgain}</button>
-            </div>
-          )}
-          {questions.length > 0 && (
-            <div className="note warn">
-              <strong>{t.aiQuestions}:</strong>
-              <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>{questions.map((q) => <li key={q}>{q}</li>)}</ul>
             </div>
           )}
           <div>

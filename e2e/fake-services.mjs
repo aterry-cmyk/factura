@@ -14,13 +14,34 @@ function answerFor(text) {
   if (/ventanas/i.test(request))
     // Only says "3" when the request did: the app refuses a description with a number nobody said.
     items.push({ description: /3 ventanas/i.test(request) ? "Cambiar 3 ventanas" : "Cambio de ventanas", quantity: 1, unit_price: 1450, price_source: "suggested", basis: "Típico para 3 ventanas de vinilo estándar, instaladas." });
+  // A door asks follow-up questions first; with <answers> it writes the line from them.
+  let questions = [];
+  if (/puerta/i.test(request)) {
+    const answers = /<answers>\n([\s\S]*?)\n<\/answers>/.exec(text)?.[1] ?? "";
+    const said = (q) => new RegExp(`${q}[^\n]*→ (.+)`).exec(answers)?.[1]?.trim();
+    if (!answers) {
+      questions = [
+        { question: "¿Cuántas puertas?", options: ["1", "2", "3"] },
+        { question: "¿De qué tipo?", options: ["Entrada", "Interior", "Corrediza"] },
+        { question: "¿Incluye retiro de la vieja?", options: ["Sí", "No"] },
+      ];
+      items.push({ description: "Cambio de puerta", quantity: 1, unit_price: 900, price_source: "said" });
+    } else {
+      const count = said("Cuántas");
+      const type = said("tipo");
+      const removal = said("retiro");
+      const d = ["Instalación de", count ? `${count} puerta${count === "1" ? "" : "s"}` : "puerta", type ? `de ${type.toLowerCase()}` : ""]
+        .filter(Boolean).join(" ") + (removal === "Sí" ? ", con retiro y desecho de la puerta vieja" : "");
+      items.push({ description: d, quantity: 1, unit_price: 900, price_source: "said" });
+    }
+  }
   if (!items.length) items.push({ description: "Trabajo", quantity: 1, unit_price: 100, price_source: "said" });
   return {
     kind: isEstimate ? "estimate" : "invoice",
-    customer_name: /juan/i.test(request) ? "Juan" : "",
+    customer_name: /juan/i.test(request) ? "Juan" : /ana/i.test(request) ? "Ana" : "",
     items,
     notes: "",
-    questions: [],
+    questions,
   };
 }
 

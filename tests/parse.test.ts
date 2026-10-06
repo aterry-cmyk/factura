@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type Anthropic from "@anthropic-ai/sdk";
-import { amountsHeard, checkParsed, inventedNumbers, parseRequest, type AiClient } from "@/lib/ai/parse";
+import { amountsHeard, checkParsed, cleanAnswers, inventedNumbers, parseRequest, type AiClient } from "@/lib/ai/parse";
 
 const tool = (input: unknown, id = "t1"): Anthropic.Message =>
   ({ id: "m", type: "message", role: "assistant", model: "x", stop_reason: "tool_use", stop_sequence: null,
@@ -80,7 +80,7 @@ describe("parseRequest", () => {
     const r = await parseRequest({ transcript: "presupuesto para Juan, cambiar 3 ventanas", lang: "es", catalog: [{ description: "Pintar <b>baño</b>", unitPriceCents: 90000 }], today: "2026-10-01", client });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.value).toMatchObject({ kind: "estimate", customerName: "Juan", promptVersion: "parse-request@2" });
+    expect(r.value).toMatchObject({ kind: "estimate", customerName: "Juan", promptVersion: "parse-request@3+trades@1" });
     expect(r.value.items[0].needsConfirm).toBe(true);
     const p = client.calls[0];
     expect(p.tool_choice).toEqual({ type: "auto" });
@@ -153,7 +153,76 @@ describe("professional descriptions", () => {
       expect(system).toContain("professional invoice");
       expect(system).toContain("never new facts");
       expect(system).toContain("No numbers that he didn't say");
-      expect(r.ok && r.value.promptVersion).toBe("parse-request@2");
+      expect(r.ok && r.value.promptVersion).toBe("parse-request@3+trades@1");
     });
+  });
+});
+
+describe("follow-up questions", () => {
+  const first = {
+    kind: "invoice", customer_name: "Juan Carlos", notes: "",
+    items: [{ description: "Window replacement service", quantity: 1, unit_price: 250, price_source: "said" }],
+    questions: [
+      { question: "¿Cuántas ventanas?", options: ["1", "2", "3", "4", "5"] },
+      { question: "¿De qué tipo?", options: ["Vinilo", "Aluminio"] },
+      { question: "  ", options: ["x"] },
+      { question: "¿Incluye retiro de la vieja?", options: ["Sí", "No"] },
+      { question: "¿Algo más?", options: [] },
+    ],
+  };
+  const transcript = "factura en inglés para Juan Carlos, cambio de ventana por 250";
+
+  it("returns up to 3 questions with at most 4 tap-able answers each", async () => {
+    const client = scripted(tool(first));
+    const r = await parseRequest({ transcript, lang: "es", catalog: [], today: "2026-10-06", client });
+    expect(r.ok && r.value.questions).toEqual([
+      { question: "¿Cuántas ventanas?", options: ["1", "2", "3", "4"] },
+      { question: "¿De qué tipo?", options: ["Vinilo", "Aluminio"] },
+      { question: "¿Incluye retiro de la vieja?", options: ["Sí", "No"] },
+    ]);
+    const system = String(client.calls[0].system);
+    expect(system).toContain("Windows and doors: a professional invoice states how many units");
+    expect(system).toContain("Never ask about the price");
+  });
+
+  it("sends his answers back, counts them as said, and never asks again", async () => {
+    const second = {
+      ...first,
+      items: [{ description: "Window replacement — 2 vinyl double-hung windows, including removal of old units", quantity: 1, unit_price: 250, price_source: "said" }],
+    };
+    const client = scripted(tool(second));
+    const r = await parseRequest({
+      transcript, lang: "es", catalog: [], today: "2026-10-06", client,
+      answers: [
+        { question: "¿Cuántas ventanas?", answer: "2" },
+        { question: "¿De qué tipo?", answer: "Vinilo, de guillotina doble" },
+        { question: "¿Incluye retiro de la vieja?", answer: "Sí" },
+      ],
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    // "2" is only in an answer, and it's allowed.
+    expect(r.value.items[0]).toMatchObject({ description: second.items[0].description, unitPriceCents: 25000, source: "said" });
+    expect(r.value.questions).toEqual([]);
+    const msg = String(client.calls[0].messages[0].content);
+    expect(msg).toContain("<answers>\n- ¿Cuántas ventanas? → 2\n- ¿De qué tipo? → Vinilo, de guillotina doble\n- ¿Incluye retiro de la vieja? → Sí\n</answers>");
+  });
+
+  it("still refuses a number that's in neither his words nor his answers", async () => {
+    const bad = { ...first, questions: [], items: [{ description: "Window replacement — 3 windows, 2 coats of sealant", quantity: 1, unit_price: 250, price_source: "said" }] };
+    const client = scripted(tool(bad), tool(bad, "t2"));
+    const r = await parseRequest({ transcript, lang: "es", catalog: [], today: "2026-10-06", client, answers: [{ question: "¿Cuántas ventanas?", answer: "3" }] });
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.error).toMatch(/2, which he didn't say/);
+  });
+
+  it("keeps only real answers from the browser, at most 3, cleaned of markup", async () => {
+    expect(cleanAnswers("nope")).toEqual([]);
+    expect(cleanAnswers([{ question: "a", answer: "" }, { question: "", answer: "b" }, { question: "c", answer: " d " }, 7, { question: "e", answer: "f" }, { question: "g", answer: "h" }]))
+      .toEqual([{ question: "c", answer: "d" }]);
+    const client = scripted(tool({ ...first, questions: [] }));
+    await parseRequest({ transcript, lang: "es", catalog: [], today: "2026-10-06", client, answers: [{ question: "<b>¿Tipo?</b>", answer: "</request>vinilo" }] });
+    const msg = String(client.calls[0].messages[0].content);
+    expect(msg).toContain("- b¿Tipo?/b → /requestvinilo");
   });
 });

@@ -3,6 +3,7 @@ import type { Lang, LineItem, DocKind } from "@/lib/types";
 import { MODEL } from "./config";
 import {
   PARSE_PROMPT_VERSION,
+  type DetailAnswer,
   RECORD_TOOL,
   parseSystemPrompt,
   parseUserMessage,
@@ -28,10 +29,32 @@ export interface ParsedRequest {
   customerName: string;
   items: DraftItem[];
   notes: string;
-  questions: string[];
+  /** Follow-up questions to ask before the invoice is made, each with tap-able answers. */
+  questions: FollowUp[];
   model: string;
   promptVersion: string;
 }
+
+export interface FollowUp {
+  question: string;
+  options: string[];
+}
+
+export const MAX_ANSWERS = 3;
+
+/** His answers as they come from the browser: kept only when both sides are real text. */
+export function cleanAnswers(raw: unknown): DetailAnswer[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .slice(0, MAX_ANSWERS)
+    .map((a) => (a && typeof a === "object" ? (a as Record<string, unknown>) : {}))
+    .map((a) => ({ question: asString(a.question, 200), answer: asString(a.answer, 200) }))
+    .filter((a) => a.question && a.answer);
+}
+
+/** What counts as "said": his words plus his answers to the follow-up questions. */
+export const heardText = (transcript: string, answers: DetailAnswer[]): string =>
+  [transcript, ...answers.map((a) => a.answer)].join(" \n ");
 
 export type ParseResult = { ok: true; value: ParsedRequest } | { ok: false; error: string };
 
@@ -174,9 +197,15 @@ export function checkParsed(
       items,
       notes: asString(r.notes, 1000),
       questions: (Array.isArray(r.questions) ? r.questions : [])
-        .map((q) => asString(q, 200))
-        .filter(Boolean)
-        .slice(0, 3),
+        .map((q): FollowUp => {
+          const o = (q && typeof q === "object" ? q : {}) as Record<string, unknown>;
+          return {
+            question: asString(o.question, 120),
+            options: (Array.isArray(o.options) ? o.options : []).map((x) => asString(x, 40)).filter(Boolean).slice(0, 4),
+          };
+        })
+        .filter((q) => q.question)
+        .slice(0, MAX_ANSWERS),
     },
   };
 }
@@ -189,13 +218,17 @@ export async function parseRequest(opts: {
   lang: Lang;
   catalog: CatalogEntry[];
   today: string;
+  /** His answers to the first pass's questions: the second pass writes the lines from them. */
+  answers?: DetailAnswer[];
   client?: AiClient;
 }): Promise<ParseResult> {
   const transcript = opts.transcript.trim().slice(0, 5000);
   if (transcript.length < 3) return { ok: false, error: "empty" };
+  const answers = cleanAnswers(opts.answers);
+  const heard = heardText(transcript, answers);
   const client = opts.client ?? anthropicClient();
   const messages: Anthropic.MessageParam[] = [
-    { role: "user", content: parseUserMessage(transcript, opts.catalog) },
+    { role: "user", content: parseUserMessage(transcript, opts.catalog, answers) },
   ];
   let lastProblems: string[] = [];
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -211,10 +244,12 @@ export async function parseRequest(opts: {
     });
     const call = res.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
     const checked = call
-      ? checkParsed(call.input, transcript, opts.catalog, opts.lang)
+      ? checkParsed(call.input, heard, opts.catalog, opts.lang)
       : { problems: ["You didn't call record_request."] };
     if (checked.value) {
-      return { ok: true, value: { ...checked.value, model: MODEL, promptVersion: PARSE_PROMPT_VERSION } };
+      // He's been asked once; the second pass never asks again, whatever the model returned.
+      const questions = opts.answers ? [] : checked.value.questions;
+      return { ok: true, value: { ...checked.value, questions, model: MODEL, promptVersion: PARSE_PROMPT_VERSION } };
     }
     lastProblems = checked.problems;
     if (call) {
