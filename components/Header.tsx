@@ -32,6 +32,9 @@ export function Header({ lang, settingsLabel, signOutLabel }: { lang: Lang; sett
         <Link className="btn small ghost" href="/documents">
           {dict(lang).allDocs}
         </Link>
+        <Link className="btn small ghost" href="/waitlist">
+          {dict(lang).waitlist}
+        </Link>
         <button className="btn small ghost" onClick={switchLang} disabled={busy} aria-label="Language">
           {lang === "es" ? "English" : "Español"}
         </button>

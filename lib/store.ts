@@ -6,6 +6,7 @@ import type { CatalogEntry } from "./ai/prompts/parse-request";
 import type { Business, Customer, Doc, DocKind, DocStatus, LateFee, Lang, PaymentMethods, Settings } from "./types";
 import { DEFAULT_COUNTRY, isCountry } from "./voice";
 import type { DraftInput } from "./validate";
+import { isTrade, type WaitlistEntry, type WaitlistFilters } from "./waitlist";
 
 type Row = Record<string, unknown>;
 
@@ -301,4 +302,44 @@ export async function updateDraft(id: string, d: DraftInput, today: string): Pro
     notes = ${d.notes}, updated_at = now()
     where id = ${id} and status = 'draft'`;
   await recordEvent(id, "edited", "");
+}
+
+// ---- Waitlist (sign-ups from the public website) ----
+
+function toWaitlist(r: Record<string, unknown>): WaitlistEntry {
+  return {
+    id: String(r.id),
+    email: String(r.email),
+    name: r.name ? String(r.name) : "",
+    trade: isTrade(r.trade) ? r.trade : null,
+    lang: r.lang === "en" ? "en" : "es",
+    createdAt: new Date(r.created_at as string).toISOString(),
+  };
+}
+
+/** Sign-ups matching the filters, newest first. `limit` null = everything (for the CSV). */
+export async function searchWaitlist(f: WaitlistFilters, limit: number | null): Promise<{ entries: WaitlistEntry[]; total: number }> {
+  const db = sql();
+  const like = `%${f.q.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  const conds = [
+    f.q ? db`(lower(email) like ${like} or lower(coalesce(name, '')) like ${like})` : db`true`,
+    f.trade === "all" ? db`true` : f.trade === "none" ? db`trade is null` : db`trade = ${f.trade}`,
+  ];
+  const where = conds.reduce((a, c) => db`${a} and ${c}`);
+  const [{ count }] = await db`select count(*)::int as count from waitlist where ${where}`;
+  const rows = await db`select * from waitlist where ${where} order by created_at desc limit ${limit ?? 50000}`;
+  return { entries: rows.map(toWaitlist), total: n(count) };
+}
+
+/** Totals for the tiles: everyone, the last 7 days, and how many said each trade. */
+export async function waitlistTotals(): Promise<{ total: number; lastWeek: number; byTrade: { trade: string | null; count: number }[] }> {
+  const db = sql();
+  const [t] = await db`select count(*)::int as total,
+    count(*) filter (where created_at > now() - interval '7 days')::int as last_week from waitlist`;
+  const byTrade = await db`select trade, count(*)::int as count from waitlist group by trade order by count desc, trade`;
+  return {
+    total: n(t.total),
+    lastWeek: n(t.last_week),
+    byTrade: byTrade.map((r) => ({ trade: r.trade ? String(r.trade) : null, count: n(r.count) })),
+  };
 }

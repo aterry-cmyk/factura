@@ -133,7 +133,7 @@ test("on a phone nothing is wider than the screen", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel("Contraseña / Password").fill("prueba-1234");
   await page.getByRole("button", { name: "Entrar / Sign in" }).click();
-  for (const path of ["/", "/documents", "/settings"]) {
+  for (const path of ["/", "/documents", "/waitlist", "/settings"]) {
     await page.goto(path);
     const wide = await page.evaluate(() => document.documentElement.scrollWidth);
     expect(wide, path).toBeLessThanOrEqual(375);
