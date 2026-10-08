@@ -13,7 +13,7 @@ export default async function PublicDoc({ params }: { params: Promise<{ token: s
   const { token } = await params;
   const doc = await getByToken(token);
   if (!doc) notFound();
-  const settings = await getSettings();
+  const settings = await getSettings(doc.accountId);
   const t = dict(doc.lang);
   return (
     <main className="wrap">

@@ -3,5 +3,6 @@ import path from "node:path";
 
 export default defineConfig({
   resolve: { alias: { "@": path.resolve(__dirname) } },
-  test: { include: ["tests/**/*.test.ts", "lib/**/*.test.ts"], testTimeout: 30000 },
+  // One file at a time: the database tests (store, accounts) share and wipe TEST_DATABASE_URL.
+  test: { include: ["tests/**/*.test.ts", "lib/**/*.test.ts"], testTimeout: 30000, fileParallelism: false },
 });

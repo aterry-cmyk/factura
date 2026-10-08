@@ -1,6 +1,5 @@
-import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import postgres from "postgres";
+import { resetDb, signIn as ownerSignIn } from "./helpers";
 
 // The app on 3100 has Azure Speech, answered by e2e/fake-services.mjs. The page records what it
 // is asked to play (headless Chrome can't play the stand-in audio) and anything the device says.
@@ -49,10 +48,7 @@ const post = (page: Page, url: string, data: object) =>
   );
 
 test.beforeAll(async () => {
-  const sql = postgres(process.env.TEST_DATABASE_URL!, { max: 1, onnotice: () => {} });
-  await sql.unsafe(readFileSync("db/schema.sql", "utf8"));
-  await sql`update settings set country = 'MX', voice_on = true, voice_gender = 'female', lang = 'es', business_name = 'Pintura Hernández' where id = 1`;
-  await sql.end();
+  await resetDb({ admin: true, settings: { country: "MX", voice_on: true, voice_gender: "female", lang: "es", business_name: "Pintura Hernández" } });
 });
 
 test.afterEach(async ({ request }) => {
@@ -61,9 +57,7 @@ test.afterEach(async ({ request }) => {
 
 async function signIn(page: Page) {
   await page.addInitScript(recorders);
-  await page.goto("/login");
-  await page.getByLabel("Contraseña / Password").fill("prueba-1234");
-  await page.getByRole("button", { name: "Entrar / Sign in" }).click();
+  await ownerSignIn(page);
   await expect(page.getByRole("heading", { name: "Dime qué necesitas" })).toBeVisible();
 }
 

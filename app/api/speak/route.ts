@@ -1,7 +1,9 @@
 import { azureConfigured, MAX_SPEAK_CHARS, synthesize } from "@/lib/azure-speech";
 import { fail, readJson } from "@/lib/http";
+import { recordUsage } from "@/lib/accounts";
 import { getSettings } from "@/lib/store";
 import { azureVoiceFor } from "@/lib/voice";
+import { routeCtx } from "@/lib/session";
 
 export const maxDuration = 30;
 
@@ -10,14 +12,17 @@ export const maxDuration = 30;
  * never from the request. 501 without Azure: the browser then uses the device's own voice.
  */
 export async function POST(req: Request) {
+  const ctx = await routeCtx();
+  if (ctx instanceof Response) return ctx;
   if (!azureConfigured()) return fail("voice_setup", 501);
   const body = (await readJson(req)) as { text?: unknown } | null;
   const text = typeof body?.text === "string" ? body.text.trim() : "";
   if (!text) return fail("empty", 400);
   if (text.length > MAX_SPEAK_CHARS) return fail("too_long", 400);
-  const s = await getSettings();
+  const s = await getSettings(ctx.accountId);
   const out = await synthesize(text, azureVoiceFor(s.country, s.lang, s.voiceGender));
   if (!out.ok) return fail("voice_failed", 502, out.detail);
+  await recordUsage(ctx.accountId, "voice_chars", text.length);
   return new Response(out.audio, {
     headers: { "Content-Type": "audio/mpeg", "Cache-Control": "private, no-store" },
   });

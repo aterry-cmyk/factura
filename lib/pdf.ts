@@ -58,7 +58,7 @@ export async function renderPdf(
   const pdf = await PDFDocument.create();
   pdf.setTitle(`${docTitle(doc)} ${doc.number}`);
   pdf.setAuthor(pdfSafe(doc.business.name));
-  pdf.setCreator("Factura");
+  pdf.setCreator("Loro AI");
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const W = 612;

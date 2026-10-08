@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
+import { resetDb, signIn } from "./helpers";
 import postgres from "postgres";
 
 // The owner's full list: totals, search, filters, CSV and bulk actions. Runs on the copy without
@@ -25,17 +26,11 @@ async function api(page: Page, url: string, data: object) {
 }
 
 test.beforeAll(async () => {
-  const sql = postgres(process.env.TEST_DATABASE_URL!, { max: 1, onnotice: () => {} });
-  await sql.unsafe(readFileSync("db/schema.sql", "utf8"));
-  await sql`truncate events, documents, customers restart identity cascade`;
-  await sql`update settings set voice_on = false, lang = 'es', next_invoice_no = 1, next_estimate_no = 1 where id = 1`;
-  await sql.end();
+  await resetDb();
 });
 
 test("lists every document with totals, search, filters, CSV and bulk actions", async ({ page }) => {
-  await page.goto("/login");
-  await page.getByLabel("Contraseña / Password").fill("prueba-1234");
-  await page.getByRole("button", { name: "Entrar / Sign in" }).click();
+  await signIn(page);
   await expect(page.getByRole("heading", { name: "Dime qué necesitas" })).toBeVisible();
 
   // F-0001 overdue (sent, due earlier), F-0002 sent, F-0003 paid, F-0004 draft, P-0001 estimate.
@@ -130,9 +125,7 @@ test("the list, the export and bulk actions need the owner's sign-in", async ({ 
 
 test("on a phone nothing is wider than the screen", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
-  await page.goto("/login");
-  await page.getByLabel("Contraseña / Password").fill("prueba-1234");
-  await page.getByRole("button", { name: "Entrar / Sign in" }).click();
+  await signIn(page);
   for (const path of ["/", "/documents", "/waitlist", "/settings"]) {
     await page.goto(path);
     const wide = await page.evaluate(() => document.documentElement.scrollWidth);

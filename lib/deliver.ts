@@ -3,6 +3,7 @@ import { amountDueCents, formatMoney, todayIso } from "./money";
 import { renderPdf } from "./pdf";
 import { docTitle, formatDate, publicUrl, smsBody } from "./document-text";
 import { emailConfigured, sendEmail, sendSms, smsConfigured } from "./send";
+import { recordUsage } from "./accounts";
 import { getLogo, markReminded, markSent, recordEvent } from "./store";
 import type { Doc } from "./types";
 
@@ -40,7 +41,7 @@ export function emailContent(doc: Doc, base: string, opts: { reminder?: boolean;
   const text = [greeting, "", intro, "", `${cta}: ${link}`, "", t.thankYou, doc.business.name].join("\n");
   const html = `<div style="font-family:Arial,sans-serif;font-size:15px;color:#1f2128;max-width:520px">
 <p>${esc(greeting)}</p><p>${esc(intro)}</p>
-<p><a href="${esc(link)}" style="display:inline-block;background:#176654;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">${esc(cta)}</a></p>
+<p><a href="${esc(link)}" style="display:inline-block;background:#14261d;color:#fff;padding:11px 20px;border-radius:999px;text-decoration:none">${esc(cta)}</a></p>
 <p>${esc(t.thankYou)}<br>${esc(doc.business.name)}</p></div>`;
   return { subject, text, html };
 }
@@ -63,7 +64,7 @@ export async function deliver(
     if (!emailConfigured()) return { ok: false, reason: "setup" };
     if (!doc.customer.email) return { ok: false, reason: "no_recipient" };
     const content = emailContent(doc, base, { reminder: opts.reminder, today });
-    const pdf = await renderPdf(doc, { logo: await getLogo(), today });
+    const pdf = await renderPdf(doc, { logo: await getLogo(doc.accountId), today });
     outcome = await sendEmail({
       to: doc.customer.email,
       replyTo: doc.business.email,
@@ -83,6 +84,7 @@ export async function deliver(
     await recordEvent(doc.id, `${kind}_failed`, outcome.detail);
     return { ok: false, reason: "failed" };
   }
+  await recordUsage(doc.accountId, channel);
   if (opts.reminder) await markReminded(doc.id);
   else await markSent(doc.id);
   return { ok: true };

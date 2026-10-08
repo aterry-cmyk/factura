@@ -64,10 +64,13 @@ export interface Settings extends Business {
   voiceOn: boolean;
   /** Which of the country's two Azure voices: a woman's or a man's. */
   voiceGender: "female" | "male";
+  /** Their trade (lib/waitlist.ts TRADES), from the setup questions; "" until answered. */
+  trade: string;
 }
 
 export interface Doc {
   id: string;
+  accountId: string;
   kind: DocKind;
   number: string;
   status: DocStatus;

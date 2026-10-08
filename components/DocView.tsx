@@ -91,7 +91,7 @@ export function DocView({ doc, logoSrc, today }: { doc: Doc; logoSrc: string | n
           <div style={{ whiteSpace: "pre-wrap" }}>{doc.notes}</div>
         </div>
       )}
-      <p style={{ marginTop: 22, fontWeight: 700, color: "#176654" }}>{t.thankYou}</p>
+      <p style={{ marginTop: 22, fontWeight: 700, color: "#14261d" }}>{t.thankYou}</p>
     </article>
   );
 }

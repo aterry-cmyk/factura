@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Creator } from "@/components/Creator";
 import { Header } from "@/components/Header";
 import { aiConfigured } from "@/lib/ai/config";
@@ -6,21 +7,25 @@ import { azureConfigured } from "@/lib/azure-speech";
 import { dict, statusLabel } from "@/lib/i18n";
 import { formatMoney, todayIso } from "@/lib/money";
 import { getDocument, getSettings, listDocuments } from "@/lib/store";
+import { headerUser, pageCtx } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ edit?: string }> }) {
   const { edit } = await searchParams;
-  const settings = await getSettings();
+  const ctx = await pageCtx();
+  const settings = await getSettings(ctx.accountId);
+  // A new account answers the setup questions first.
+  if (!settings.onboarded) redirect("/welcome");
   const t = dict(settings.lang);
-  const editDoc = edit ? await getDocument(edit) : null;
-  const docs = editDoc ? [] : await listDocuments(30);
+  const editDoc = edit ? await getDocument(ctx.accountId, edit) : null;
+  const docs = editDoc ? [] : await listDocuments(ctx.accountId, 30);
   const today = todayIso();
   const first = settings.ownerName.split(" ")[0];
 
   return (
     <main className="wrap">
-      <Header lang={settings.lang} settingsLabel={t.settings} signOutLabel={t.signOut} />
+      <Header lang={settings.lang} user={headerUser(ctx)} />
       {!editDoc && first && <p className="muted" style={{ margin: "0 0 8px" }}>{t.hello}, {first} 👋</p>}
       <Creator
         key={editDoc?.id ?? "new"}

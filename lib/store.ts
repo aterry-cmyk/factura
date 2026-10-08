@@ -36,58 +36,63 @@ function toSettings(r: Row): Settings {
     country: isCountry(r.country) ? r.country : DEFAULT_COUNTRY,
     voiceOn: r.voice_on !== false,
     voiceGender: r.voice_gender === "male" ? "male" : "female",
+    trade: s(r.trade),
   };
 }
 
-export async function getSettings(): Promise<Settings> {
-  const [row] = await sql()`select *, logo is not null as has_logo from settings where id = 1`;
+// Every function below that touches business data takes the account id first; nothing reads or
+// writes across accounts except the reminder job and the public invoice link (by its secret token).
+
+export async function getSettings(acct: string): Promise<Settings> {
+  const [row] = await sql()`select *, logo is not null as has_logo from settings where account_id = ${acct}`;
+  if (!row) throw new Error("settings missing for account");
   return toSettings(row);
 }
 
-export async function setLang(lang: Lang): Promise<void> {
-  await sql()`update settings set lang = ${lang}, updated_at = now() where id = 1`;
+export async function setLang(acct: string, lang: Lang): Promise<void> {
+  await sql()`update settings set lang = ${lang}, updated_at = now() where account_id = ${acct}`;
 }
 
-export async function setVoice(v: { country?: string; voiceOn?: boolean; voiceGender?: "female" | "male" }): Promise<void> {
-  if (v.voiceGender !== undefined) await sql()`update settings set voice_gender = ${v.voiceGender}, updated_at = now() where id = 1`;
-  if (v.country !== undefined) await sql()`update settings set country = ${v.country}, updated_at = now() where id = 1`;
-  if (v.voiceOn !== undefined) await sql()`update settings set voice_on = ${v.voiceOn}, updated_at = now() where id = 1`;
+export async function setVoice(acct: string, v: { country?: string; voiceOn?: boolean; voiceGender?: "female" | "male" }): Promise<void> {
+  if (v.voiceGender !== undefined) await sql()`update settings set voice_gender = ${v.voiceGender}, updated_at = now() where account_id = ${acct}`;
+  if (v.country !== undefined) await sql()`update settings set country = ${v.country}, updated_at = now() where account_id = ${acct}`;
+  if (v.voiceOn !== undefined) await sql()`update settings set voice_on = ${v.voiceOn}, updated_at = now() where account_id = ${acct}`;
 }
 
-export async function saveBusiness(b: Business): Promise<void> {
+export async function saveBusiness(acct: string, b: Business): Promise<void> {
   await sql()`update settings set business_name = ${b.name}, owner_name = ${b.ownerName}, address = ${b.address},
-    phone = ${b.phone}, email = ${b.email}, website = ${b.website}, updated_at = now() where id = 1`;
+    phone = ${b.phone}, email = ${b.email}, website = ${b.website}, updated_at = now() where account_id = ${acct}`;
 }
 
 /** The wizard's answers become next time's defaults. */
-export async function saveDefaults(d: DraftInput): Promise<void> {
+export async function saveDefaults(acct: string, d: DraftInput): Promise<void> {
   const db = sql();
   await db`update settings set business_name = ${d.business.name}, owner_name = ${d.business.ownerName},
     address = ${d.business.address}, phone = ${d.business.phone}, email = ${d.business.email},
     website = ${d.business.website}, state = ${d.state}, tax_enabled = ${d.taxRate > 0}, tax_rate = ${d.taxRate},
     due_days = ${d.dueDays}, payment_methods = ${db.json(d.paymentMethods as never)},
     ${d.kind === "invoice" ? db`reminder_days = ${d.reminderDays}, late_fee = ${db.json(d.lateFee as never)},` : db``}
-    onboarded = true, updated_at = now() where id = 1`;
+    onboarded = true, updated_at = now() where account_id = ${acct}`;
 }
 
-export async function getLogo(): Promise<{ bytes: Buffer; type: string } | null> {
-  const [row] = await sql()`select logo, logo_type from settings where id = 1`;
+export async function getLogo(acct: string): Promise<{ bytes: Buffer; type: string } | null> {
+  const [row] = await sql()`select logo, logo_type from settings where account_id = ${acct}`;
   if (!row?.logo) return null;
   return { bytes: Buffer.from(row.logo as Uint8Array), type: s(row.logo_type) };
 }
 
-export async function setLogo(logo: { bytes: Buffer; type: string } | null): Promise<void> {
+export async function setLogo(acct: string, logo: { bytes: Buffer; type: string } | null): Promise<void> {
   await sql()`update settings set logo = ${logo ? logo.bytes : null}, logo_type = ${logo?.type ?? null},
-    updated_at = now() where id = 1`;
+    updated_at = now() where account_id = ${acct}`;
 }
 
 /** What he has charged before: the latest price for each distinct description. */
-export async function catalog(limit = 60): Promise<CatalogEntry[]> {
+export async function catalog(acct: string, limit = 60): Promise<CatalogEntry[]> {
   const rows = await sql()`
     select distinct on (lower(item->>'description')) item->>'description' as description,
            (item->>'unitPriceCents')::bigint as cents, d.created_at
     from documents d, jsonb_array_elements(d.items) item
-    where d.status <> 'void' and item->>'source' <> 'suggested'
+    where d.account_id = ${acct} and d.status <> 'void' and item->>'source' <> 'suggested'
     order by lower(item->>'description'), d.created_at desc`;
   return rows
     .sort((a, b) => Date.parse(String(b.created_at)) - Date.parse(String(a.created_at)))
@@ -95,9 +100,9 @@ export async function catalog(limit = 60): Promise<CatalogEntry[]> {
     .map((r) => ({ description: s(r.description), unitPriceCents: n(r.cents) }));
 }
 
-export async function findCustomers(query: string): Promise<(Customer & { id: string })[]> {
+export async function findCustomers(acct: string, query: string): Promise<(Customer & { id: string })[]> {
   const q = `%${query.trim().toLowerCase()}%`;
-  const rows = await sql()`select * from customers where lower(name) like ${q} or lower(company) like ${q}
+  const rows = await sql()`select * from customers where account_id = ${acct} and (lower(name) like ${q} or lower(company) like ${q})
     order by created_at desc limit 5`;
   return rows.map((r) => ({ id: s(r.id), name: s(r.name), company: s(r.company), email: s(r.email), phone: s(r.phone) }));
 }
@@ -105,6 +110,7 @@ export async function findCustomers(query: string): Promise<(Customer & { id: st
 function toDoc(r: Row): Doc {
   return {
     id: s(r.id),
+    accountId: s(r.account_id),
     kind: r.kind as DocKind,
     number: s(r.number),
     status: r.status as DocStatus,
@@ -139,16 +145,17 @@ export const newToken = (): string => randomBytes(18).toString("base64url");
  * same transaction, so two documents can never share a number.
  */
 export async function createDocument(
+  acct: string,
   d: DraftInput,
   meta: { today: string; model?: string; promptVersion?: string; convertedFrom?: string },
 ): Promise<Doc> {
   const t = totals(d.items, d.taxRate);
   return sql().begin(async (tx) => {
     const counter = d.kind === "invoice" ? "next_invoice_no" : "next_estimate_no";
-    const [seq] = await tx`update settings set ${tx(counter)} = ${tx(counter)} + 1 where id = 1
+    const [seq] = await tx`update settings set ${tx(counter)} = ${tx(counter)} + 1 where account_id = ${acct}
       returning ${tx(counter)} - 1 as no`;
     const number = `${d.kind === "invoice" ? "F" : "P"}-${String(n(seq.no)).padStart(4, "0")}`;
-    const [existing] = await tx`select id from customers where lower(name) = ${d.customer.name.toLowerCase()}
+    const [existing] = await tx`select id from customers where account_id = ${acct} and lower(name) = ${d.customer.name.toLowerCase()}
       order by created_at desc limit 1`;
     let customerId: string;
     if (existing) {
@@ -157,14 +164,14 @@ export async function createDocument(
         email = coalesce(nullif(${d.customer.email}, ''), email),
         phone = coalesce(nullif(${d.customer.phone}, ''), phone) where id = ${customerId}`;
     } else {
-      const [c] = await tx`insert into customers (name, company, email, phone)
-        values (${d.customer.name}, ${d.customer.company}, ${d.customer.email}, ${d.customer.phone}) returning id`;
+      const [c] = await tx`insert into customers (account_id, name, company, email, phone)
+        values (${acct}, ${d.customer.name}, ${d.customer.company}, ${d.customer.email}, ${d.customer.phone}) returning id`;
       customerId = s(c.id);
     }
-    const [row] = await tx`insert into documents (kind, number, customer_id, customer, business, lang, items, state,
+    const [row] = await tx`insert into documents (account_id, kind, number, customer_id, customer, business, lang, items, state,
         tax_rate, subtotal_cents, tax_cents, total_cents, issue_date, due_date, reminder_days, late_fee,
         payment_methods, notes, transcript, ai_model, prompt_version, public_token, converted_from)
-      values (${d.kind}, ${number}, ${customerId}, ${tx.json(d.customer as never)}, ${tx.json(d.business as never)},
+      values (${acct}, ${d.kind}, ${number}, ${customerId}, ${tx.json(d.customer as never)}, ${tx.json(d.business as never)},
         ${d.lang}, ${tx.json(d.items as never)}, ${d.state}, ${d.taxRate}, ${t.subtotalCents}, ${t.taxCents},
         ${t.totalCents}, ${meta.today}, ${addDays(meta.today, d.dueDays)}, ${d.reminderDays},
         ${tx.json(d.lateFee as never)}, ${tx.json(d.paymentMethods as never)}, ${d.notes}, ${d.transcript},
@@ -175,9 +182,9 @@ export async function createDocument(
   });
 }
 
-export async function getDocument(id: string): Promise<Doc | null> {
+export async function getDocument(acct: string, id: string): Promise<Doc | null> {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
-  const [row] = await sql()`select * from documents where id = ${id}`;
+  const [row] = await sql()`select * from documents where account_id = ${acct} and id = ${id}`;
   return row ? toDoc(row) : null;
 }
 
@@ -187,8 +194,8 @@ export async function getByToken(token: string): Promise<Doc | null> {
   return row ? toDoc(row) : null;
 }
 
-export async function listDocuments(limit = 50): Promise<Doc[]> {
-  const rows = await sql()`select * from documents order by created_at desc limit ${limit}`;
+export async function listDocuments(acct: string, limit = 50): Promise<Doc[]> {
+  const rows = await sql()`select * from documents where account_id = ${acct} order by created_at desc limit ${limit}`;
   return rows.map(toDoc);
 }
 
@@ -197,6 +204,7 @@ export async function listDocuments(limit = 50): Promise<Doc[]> {
  * "overdue" = sent invoices past their due date), kind and issue-date range, newest first.
  */
 export async function searchDocuments(
+  acct: string,
   f: DocFilters,
   today: string,
   page: { limit: number; offset: number } | null,
@@ -204,6 +212,7 @@ export async function searchDocuments(
   const db = sql();
   const like = `%${f.q.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
   const conds = [
+    db`account_id = ${acct}`,
     f.q
       ? db`(lower(customer->>'name') like ${like} or lower(customer->>'company') like ${like}
           or lower(number) like ${like} or lower(items::text) like ${like})`
@@ -226,20 +235,20 @@ export async function searchDocuments(
 }
 
 /** The money at a glance: what's owed (with late fees as of today), overdue, and paid this month. */
-export async function documentTotals(today: string): Promise<{
+export async function documentTotals(acct: string, today: string): Promise<{
   owed: { count: number; cents: number };
   overdue: { count: number; cents: number };
   paidThisMonth: { count: number; cents: number };
   drafts: number;
 }> {
   const db = sql();
-  const open = (await db`select * from documents where kind = 'invoice' and status = 'sent'`).map(toDoc);
+  const open = (await db`select * from documents where account_id = ${acct} and kind = 'invoice' and status = 'sent'`).map(toDoc);
   const late = open.filter((d) => d.dueDate < today);
   const sum = (docs: Doc[]) => docs.reduce((t, d) => t + amountDueCents(d, today), 0);
   const month = today.slice(0, 7);
   const [paid] = await db`select count(*)::int as count, coalesce(sum(total_cents), 0)::bigint as cents from documents
-    where kind = 'invoice' and status = 'paid' and to_char(paid_at at time zone 'UTC', 'YYYY-MM') = ${month}`;
-  const [drafts] = await db`select count(*)::int as count from documents where status = 'draft'`;
+    where account_id = ${acct} and kind = 'invoice' and status = 'paid' and to_char(paid_at at time zone 'UTC', 'YYYY-MM') = ${month}`;
+  const [drafts] = await db`select count(*)::int as count from documents where account_id = ${acct} and status = 'draft'`;
   return {
     owed: { count: open.length, cents: sum(open) },
     overdue: { count: late.length, cents: sum(late) },
@@ -248,22 +257,23 @@ export async function documentTotals(today: string): Promise<{
   };
 }
 
-export async function getDocuments(ids: string[]): Promise<Doc[]> {
+export async function getDocuments(acct: string, ids: string[]): Promise<Doc[]> {
   const valid = ids.filter((id) => /^[0-9a-f-]{36}$/i.test(id));
   if (!valid.length) return [];
-  const rows = await sql()`select * from documents where id in ${sql()(valid)}`;
+  const rows = await sql()`select * from documents where account_id = ${acct} and id in ${sql()(valid)}`;
   return rows.map(toDoc);
 }
 
-export async function setStatus(id: string, status: DocStatus): Promise<Doc | null> {
+export async function setStatus(acct: string, id: string, status: DocStatus): Promise<Doc | null> {
   const [row] = await sql()`update documents set status = ${status},
       paid_at = case when ${status} = 'paid' then now() when ${status} = 'sent' then null else paid_at end,
       updated_at = now()
-    where id = ${id} returning *`;
+    where account_id = ${acct} and id = ${id} returning *`;
   if (row) await recordEvent(id, status === "sent" ? "unpaid" : status, "");
   return row ? toDoc(row) : null;
 }
 
+/** Called only with a document already loaded for its account (or by the reminder job). */
 /** First send moves a draft to "sent"; a resend leaves the status alone. */
 export async function markSent(id: string): Promise<void> {
   await sql()`update documents set status = case when status = 'draft' then 'sent' else status end,
@@ -286,12 +296,14 @@ export async function listEvents(documentId: string): Promise<{ kind: string; de
 }
 
 export async function unpaidInvoices(): Promise<Doc[]> {
-  const rows = await sql()`select * from documents where kind = 'invoice' and status = 'sent' and reminder_days > 0`;
+  // Across all accounts: the daily job. Suspended accounts don't send reminders.
+  const rows = await sql()`select d.* from documents d join accounts a on a.id = d.account_id
+    where a.status = 'active' and d.kind = 'invoice' and d.status = 'sent' and d.reminder_days > 0`;
   return rows.map(toDoc);
 }
 
 /** Rewrites a draft in place: same number and link, new contents and totals. */
-export async function updateDraft(id: string, d: DraftInput, today: string): Promise<void> {
+export async function updateDraft(acct: string, id: string, d: DraftInput, today: string): Promise<void> {
   const t = totals(d.items, d.taxRate);
   const db = sql();
   await db`update documents set customer = ${db.json(d.customer as never)}, business = ${db.json(d.business as never)},
@@ -300,7 +312,7 @@ export async function updateDraft(id: string, d: DraftInput, today: string): Pro
     issue_date = ${today}, due_date = ${addDays(today, d.dueDays)}, reminder_days = ${d.reminderDays},
     late_fee = ${db.json(d.lateFee as never)}, payment_methods = ${db.json(d.paymentMethods as never)},
     notes = ${d.notes}, updated_at = now()
-    where id = ${id} and status = 'draft'`;
+    where account_id = ${acct} and id = ${id} and status = 'draft'`;
   await recordEvent(id, "edited", "");
 }
 
@@ -342,4 +354,21 @@ export async function waitlistTotals(): Promise<{ total: number; lastWeek: numbe
     lastWeek: n(t.last_week),
     byTrade: byTrade.map((r) => ({ trade: r.trade ? String(r.trade) : null, count: n(r.count) })),
   };
+}
+
+// ---- Setup questions (app/welcome) ----
+
+/** Saves the answers, names the account after the business and marks the setup done. */
+export async function saveSetup(acct: string, v: import("./setup").Setup): Promise<void> {
+  const db = sql();
+  await db.begin(async (tx) => {
+    await tx`update settings set business_name = ${v.business.name}, owner_name = ${v.business.ownerName},
+      address = ${v.business.address}, phone = ${v.business.phone}, email = ${v.business.email},
+      website = ${v.business.website}, trade = ${v.trade}, state = ${v.state}, tax_enabled = ${v.taxRate > 0},
+      tax_rate = ${v.taxRate}, due_days = ${v.dueDays}, reminder_days = ${v.reminderDays},
+      payment_methods = ${tx.json(v.paymentMethods as never)}, country = ${v.country}, voice_gender = ${v.voiceGender},
+      lang = ${v.lang}, onboarded = true, updated_at = now()
+      where account_id = ${acct}`;
+    await tx`update accounts set name = ${v.business.name} where id = ${acct}`;
+  });
 }

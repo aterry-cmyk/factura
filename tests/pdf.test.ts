@@ -8,6 +8,7 @@ const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 
 export const sampleDoc = (over: Partial<Doc> = {}): Doc => ({
   id: "00000000-0000-0000-0000-000000000001",
+  accountId: "00000000-0000-0000-0000-0000000000aa",
   kind: "invoice",
   number: "F-0001",
   status: "sent",

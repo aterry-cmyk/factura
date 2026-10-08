@@ -6,7 +6,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   const { token } = await params;
   const doc = await getByToken(token);
   if (!doc) return new Response("Not found", { status: 404 });
-  const pdf = await renderPdf(doc, { logo: await getLogo(), today: todayIso() });
+  const pdf = await renderPdf(doc, { logo: await getLogo(doc.accountId), today: todayIso() });
   return new Response(Buffer.from(pdf), {
     headers: {
       "Content-Type": "application/pdf",

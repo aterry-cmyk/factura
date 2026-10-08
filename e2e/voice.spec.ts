@@ -1,6 +1,5 @@
-import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import postgres from "postgres";
+import { resetDb, signIn as ownerSignIn } from "./helpers";
 
 // The copy of the app without Azure Speech: everything here is the device's own voice.
 test.use({ baseURL: "http://127.0.0.1:3101" });
@@ -44,16 +43,11 @@ const saveSettings = (page: Page, data: object) =>
 const spoken = (page: Page) => page.evaluate(() => (window as unknown as { __spoken: { text: string; lang: string; voice: string | null }[] }).__spoken);
 
 test.beforeAll(async () => {
-  const sql = postgres(process.env.TEST_DATABASE_URL!, { max: 1, onnotice: () => {} });
-  await sql.unsafe(readFileSync("db/schema.sql", "utf8"));
-  await sql`update settings set country = 'US', voice_on = true, business_name = 'Pintura Hernández' where id = 1`;
-  await sql.end();
+  await resetDb({ settings: { country: "US", voice_on: true, business_name: "Pintura Hernández" } });
 });
 
 async function signIn(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Contraseña / Password").fill("prueba-1234");
-  await page.getByRole("button", { name: "Entrar / Sign in" }).click();
+  await ownerSignIn(page);
   await expect(page.getByRole("heading", { name: "Dime qué necesitas" })).toBeVisible();
 }
 

@@ -9,6 +9,7 @@ import { todayIso } from "@/lib/money";
 import { emailConfigured, smsConfigured } from "@/lib/send";
 import { getDocument, getSettings, listEvents } from "@/lib/store";
 import { headers } from "next/headers";
+import { headerUser, pageCtx } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,8 @@ const EVENT_LABELS: Record<string, [string, string]> = {
 
 export default async function DocumentPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [doc, settings] = await Promise.all([getDocument(id), getSettings()]);
+  const ctx = await pageCtx();
+  const [doc, settings] = await Promise.all([getDocument(ctx.accountId, id), getSettings(ctx.accountId)]);
   if (!doc) notFound();
   const t = dict(settings.lang);
   const events = await listEvents(doc.id);
@@ -42,7 +44,7 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
 
   return (
     <main className="wrap">
-      <Header lang={settings.lang} settingsLabel={t.settings} signOutLabel={t.signOut} />
+      <Header lang={settings.lang} user={headerUser(ctx)} />
       <div className="row" style={{ marginBottom: 12 }}>
         <h1 className="grow" style={{ margin: 0 }}>
           {doc.kind === "invoice" ? t.invoice : t.estimate} {doc.number}

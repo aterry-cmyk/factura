@@ -39,14 +39,14 @@ export default defineConfig({
     { command: "node e2e/fake-services.mjs", url: `${FAKE}/_calls`, reuseExistingServer: false },
     {
       command: `${process.env.E2E_SKIP_BUILD ? "" : "npx next build && "}npx next start -p 3100`,
-      url: "http://127.0.0.1:3100/login",
+      url: "http://127.0.0.1:3100/forgot", // a page that doesn't need the database
       timeout: 240_000,
       reuseExistingServer: false,
       env: { ...env, AZURE_SPEECH_KEY: "fake", AZURE_SPEECH_REGION: "fake", AZURE_SPEECH_URL: FAKE },
     },
     {
       command: "npx next start -p 3101",
-      url: "http://127.0.0.1:3101/login",
+      url: "http://127.0.0.1:3101/forgot",
       timeout: 60_000,
       reuseExistingServer: false,
       env: { ...env, APP_URL: "http://127.0.0.1:3101" },

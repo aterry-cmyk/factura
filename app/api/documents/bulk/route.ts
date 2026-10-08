@@ -4,6 +4,7 @@ import { fail, readJson } from "@/lib/http";
 import { todayIso } from "@/lib/money";
 import { emailConfigured, smsConfigured } from "@/lib/send";
 import { getDocuments, setStatus } from "@/lib/store";
+import { routeCtx } from "@/lib/session";
 
 export const maxDuration = 300;
 
@@ -13,13 +14,15 @@ export const maxDuration = 300;
  * A reminder goes by email when the customer has one, otherwise by text, like the daily job.
  */
 export async function POST(req: Request) {
+  const ctx = await routeCtx();
+  if (ctx instanceof Response) return ctx;
   const body = (await readJson(req)) as { ids?: unknown; action?: unknown } | null;
   const action = body?.action as BulkAction;
   if (!BULK_ACTIONS.includes(action)) return fail("invalid", 400);
   const ids = Array.isArray(body?.ids) ? [...new Set(body.ids.filter((x): x is string => typeof x === "string"))] : [];
   if (!ids.length || ids.length > MAX_BULK) return fail("invalid", 400);
 
-  const docs = await getDocuments(ids);
+  const docs = await getDocuments(ctx.accountId, ids);
   const plan = bulkPlan(docs, action);
   const failed: { id: string; reason: string }[] = [];
   let done = 0;
@@ -45,7 +48,7 @@ export async function POST(req: Request) {
     }
   } else {
     for (const id of plan.apply) {
-      await setStatus(id, action);
+      await setStatus(ctx.accountId, id, action);
       done++;
     }
   }

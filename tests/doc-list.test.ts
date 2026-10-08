@@ -3,7 +3,7 @@ import { bulkPlan, canMove, csvCell, documentsCsv, filtersQuery, isOverdue, pars
 import type { Doc } from "@/lib/types";
 
 const doc = (over: Partial<Doc> = {}): Doc => ({
-  id: "00000000-0000-0000-0000-000000000001", kind: "invoice", number: "F-0001", status: "sent",
+  id: "00000000-0000-0000-0000-000000000001", accountId: "00000000-0000-0000-0000-0000000000aa", kind: "invoice", number: "F-0001", status: "sent",
   customer: { name: "Juan Pérez", company: "", email: "juan@example.com", phone: "" },
   business: { name: "Pintura", ownerName: "", address: "", phone: "", email: "", website: "" },
   lang: "es", items: [{ description: "Pintar cocina", quantity: 1, unitPriceCents: 220000, source: "said" }],

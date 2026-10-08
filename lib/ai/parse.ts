@@ -56,7 +56,11 @@ export function cleanAnswers(raw: unknown): DetailAnswer[] {
 export const heardText = (transcript: string, answers: DetailAnswer[]): string =>
   [transcript, ...answers.map((a) => a.answer)].join(" \n ");
 
-export type ParseResult = { ok: true; value: ParsedRequest } | { ok: false; error: string };
+/** Tokens the model used across every attempt (for the account's usage). */
+export type TokenUsage = { input: number; output: number };
+export type ParseResult =
+  | { ok: true; value: ParsedRequest; usage: TokenUsage }
+  | { ok: false; error: string; usage: TokenUsage };
 
 const SPOKEN_NUMBERS: Record<string, number> = {
   un: 1, uno: 1, una: 1, one: 1, a: 1,
@@ -223,7 +227,8 @@ export async function parseRequest(opts: {
   client?: AiClient;
 }): Promise<ParseResult> {
   const transcript = opts.transcript.trim().slice(0, 5000);
-  if (transcript.length < 3) return { ok: false, error: "empty" };
+  const usage: TokenUsage = { input: 0, output: 0 };
+  if (transcript.length < 3) return { ok: false, error: "empty", usage };
   const answers = cleanAnswers(opts.answers);
   const heard = heardText(transcript, answers);
   const client = opts.client ?? anthropicClient();
@@ -242,6 +247,8 @@ export async function parseRequest(opts: {
       // Forcing the tool is refused by current models; the prompt asks for it and the loop retries.
       tool_choice: { type: "auto" },
     });
+    usage.input += res.usage?.input_tokens ?? 0;
+    usage.output += res.usage?.output_tokens ?? 0;
     const call = res.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
     const checked = call
       ? checkParsed(call.input, heard, opts.catalog, opts.lang)
@@ -249,7 +256,7 @@ export async function parseRequest(opts: {
     if (checked.value) {
       // He's been asked once; the second pass never asks again, whatever the model returned.
       const questions = opts.answers ? [] : checked.value.questions;
-      return { ok: true, value: { ...checked.value, questions, model: MODEL, promptVersion: PARSE_PROMPT_VERSION } };
+      return { ok: true, value: { ...checked.value, questions, model: MODEL, promptVersion: PARSE_PROMPT_VERSION }, usage };
     }
     lastProblems = checked.problems;
     if (call) {
@@ -270,5 +277,5 @@ export async function parseRequest(opts: {
       messages.push({ role: "user", content: "Answer with the record_request tool." });
     }
   }
-  return { ok: false, error: lastProblems.join(" ") };
+  return { ok: false, error: lastProblems.join(" "), usage };
 }

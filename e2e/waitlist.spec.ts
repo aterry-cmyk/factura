@@ -1,15 +1,13 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
-import postgres from "postgres";
+import { db, resetDb, signIn } from "./helpers";
 
-// The owner's view of the website waitlist: totals, search, trade filter and the CSV.
+// The website waitlist lives in the Loro AI admin: totals, search, trade filter, CSV and invitations.
 test.use({ baseURL: "http://127.0.0.1:3101" });
 
 test.beforeAll(async () => {
-  const sql = postgres(process.env.TEST_DATABASE_URL!, { max: 1, onnotice: () => {} });
-  await sql.unsafe(readFileSync("db/schema.sql", "utf8"));
-  await sql`truncate waitlist`;
-  await sql`update settings set voice_on = false, lang = 'es' where id = 1`;
+  await resetDb({ admin: true });
+  const sql = db();
   await sql`insert into waitlist (email, trade, lang, created_at) values
     ('juan@example.com', 'painting', 'es', now() - interval '1 day'),
     ('ana@example.com', 'painting', 'en', now() - interval '2 days'),
@@ -18,12 +16,10 @@ test.beforeAll(async () => {
   await sql.end();
 });
 
-test("the owner sees the waitlist, filters it and downloads it", async ({ page }) => {
-  await page.goto("/login");
-  await page.getByLabel("Contraseña / Password").fill("prueba-1234");
-  await page.getByRole("button", { name: "Entrar / Sign in" }).click();
-  await expect(page.getByRole("heading", { name: "Dime qué necesitas" })).toBeVisible();
-
+test("the admin sees the waitlist, filters it, downloads it and invites someone", async ({ page }) => {
+  await signIn(page);
+  await page.getByLabel("Menú de la cuenta").click();
+  await page.getByRole("menuitem", { name: "Admin de Loro AI" }).click();
   await page.getByRole("link", { name: "Lista de espera" }).click();
   await expect(page.getByRole("heading", { name: "Lista de espera del sitio web" })).toBeVisible();
   const totals = page.getByTestId("waitlist-totals");
@@ -39,6 +35,9 @@ test("the owner sees the waitlist, filters it and downloads it", async ({ page }
   await page.getByRole("button", { name: "Filtrar" }).click();
   await expect(rows).toHaveCount(1);
   await expect(rows.first()).toContainText("Techos");
+  // Invite her straight from the list: a one-time sign-up link for her email.
+  await rows.first().getByRole("button", { name: "Crear invitación" }).click();
+  await expect(rows.first().getByTestId("one-time-link")).toHaveText(/\/signup\?invite=[A-Za-z0-9_-]{43}$/);
   await page.getByRole("link", { name: "Quitar filtros" }).click();
 
   await page.getByLabel("Todos los oficios").selectOption("painting");
@@ -54,8 +53,12 @@ test("the owner sees the waitlist, filters it and downloads it", async ({ page }
     expect.stringMatching(/^ana@example\.com,,Pintura,Inglés,\d{4}-\d{2}-\d{2}$/),
   ]);
 
+  // The old address still works.
+  await page.goto("/waitlist");
+  await expect(page).toHaveURL(/\/admin\/waitlist$/);
+
   // Signed out, the page and the CSV are closed.
   await page.context().clearCookies();
-  const r = await page.request.get("/api/waitlist/export", { maxRedirects: 0 });
+  const r = await page.request.get("/api/admin/waitlist/export", { maxRedirects: 0 });
   expect(r.status()).toBe(401);
 });

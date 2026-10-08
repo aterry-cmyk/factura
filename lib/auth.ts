@@ -1,50 +1,79 @@
-// One owner, one password. The session is an expiry time signed with SESSION_SECRET (HMAC-SHA256),
-// kept in an httpOnly cookie. Web Crypto only, so the same code runs in the proxy and in routes.
+import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from "node:crypto";
 
-export const SESSION_COOKIE = "factura_session";
+// Passwords and session tokens. Pure helpers live here; anything that reads the database is in
+// lib/session.ts. The cookie carries a random token; the database keeps only its SHA-256, so a
+// leaked sessions table can't be used to sign in.
+
+export const SESSION_COOKIE = "loro_session";
 export const SESSION_DAYS = 30;
 
-const enc = new TextEncoder();
+const N = 16384;
+const R = 8;
+const P = 1;
+const LEN = 32;
+const MAXMEM = 64 * 1024 * 1024;
 
-async function hmac(secret: string, data: string): Promise<string> {
-  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, [
-    "sign",
-  ]);
-  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(data)));
-  return Array.from(sig, (b) => b.toString(16).padStart(2, "0")).join("");
+function scrypt(password: string, salt: Buffer, len: number, n: number, r: number, p: number): Promise<Buffer> {
+  return new Promise((resolve, reject) =>
+    scryptCb(password.normalize("NFKC"), salt, len, { N: n, r, p, maxmem: MAXMEM }, (err, key) => (err ? reject(err) : resolve(key))),
+  );
 }
 
-function equal(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
+export async function hashPassword(password: string): Promise<string> {
+  const salt = randomBytes(16);
+  const hash = await scrypt(password, salt, LEN, N, R, P);
+  return `scrypt$${N}$${R}$${P}$${salt.toString("base64")}$${hash.toString("base64")}`;
 }
 
-const secret = (): string | null => {
-  const v = process.env.SESSION_SECRET;
-  return v && v.length >= 32 ? v : null;
-};
-
-export async function makeSession(now = Date.now()): Promise<string> {
-  const key = secret();
-  if (!key) throw new Error("SESSION_SECRET must be at least 32 characters");
-  const exp = String(now + SESSION_DAYS * 86_400_000);
-  return `${exp}.${await hmac(key, exp)}`;
+export async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  const [alg, n, r, p, salt, hash] = stored.split("$");
+  if (alg !== "scrypt" || !salt || !hash) return false;
+  const expected = Buffer.from(hash, "base64");
+  const got = await scrypt(password, Buffer.from(salt, "base64"), expected.length, Number(n), Number(r), Number(p));
+  return got.length === expected.length && timingSafeEqual(got, expected);
 }
 
-export async function validSession(value: string | undefined, now = Date.now()): Promise<boolean> {
-  const key = secret();
-  if (!key || !value) return false;
-  const [exp, sig] = value.split(".");
-  if (!exp || !sig || !/^\d+$/.test(exp) || Number(exp) < now) return false;
-  return equal(sig, await hmac(key, exp));
+/** A hash to check against when the email doesn't exist, so both cases take the same time. */
+let dummy: Promise<string> | null = null;
+export const dummyHash = (): Promise<string> => (dummy ??= hashPassword("not-a-real-password-0"));
+
+export const MIN_PASSWORD = 8;
+
+/** null when the password is acceptable, else a short code the screens translate. */
+export function passwordProblem(password: unknown): "password_short" | "password_weak" | "password_long" | null {
+  if (typeof password !== "string" || password.length < MIN_PASSWORD) return "password_short";
+  if (password.length > 200) return "password_long";
+  if (!/\p{L}/u.test(password) || !/\d/.test(password)) return "password_weak";
+  return null;
 }
 
-/** Compares through HMAC so the time taken doesn't depend on how much of the password matched. */
-export async function passwordMatches(given: string): Promise<boolean> {
+export function normalEmail(email: unknown): string | null {
+  if (typeof email !== "string") return null;
+  const e = email.trim().toLowerCase();
+  return e.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) ? e : null;
+}
+
+export function cleanName(name: unknown, max = 120): string {
+  return typeof name === "string" ? name.replace(/\s+/g, " ").trim().slice(0, max) : "";
+}
+
+export const newToken = (): string => randomBytes(32).toString("base64url");
+export const tokenId = (token: string): string => createHash("sha256").update(token).digest("hex");
+/** 32 random bytes in base64url are 43 characters. */
+export const looksLikeToken = (v: string | undefined | null): v is string => Boolean(v && /^[A-Za-z0-9_-]{43}$/.test(v));
+
+export function sessionCookie(token: string): string {
+  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}${
+    process.env.NODE_ENV === "production" ? "; Secure" : ""
+  }`;
+}
+export const clearedCookie = (): string => `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+
+/** The old single-owner password, used once to claim the data that existed before accounts. */
+export function ownerPasswordMatches(given: string): boolean {
   const expected = process.env.OWNER_PASSWORD;
-  const key = secret();
-  if (!expected || !key) return false;
-  return equal(await hmac(key, given), await hmac(key, expected));
+  if (!expected || !given) return false;
+  const a = createHash("sha256").update(given).digest();
+  const b = createHash("sha256").update(expected).digest();
+  return timingSafeEqual(a, b);
 }

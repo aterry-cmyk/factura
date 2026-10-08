@@ -11,3 +11,8 @@ export async function readJson(req: Request): Promise<unknown> {
     return null;
   }
 }
+
+/** The caller's address as Vercel reports it, for slowing down guessing. */
+export function clientIp(req: Request): string {
+  return (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim().slice(0, 64) || "local";
+}

@@ -101,13 +101,13 @@ describe("parseRequest", () => {
     const empty = { ...tool({}), content: [{ type: "text", text: "Hola" }] } as unknown as Anthropic.Message;
     const client = scripted(empty, empty);
     const r = await parseRequest({ transcript: "hola que tal", lang: "es", catalog: [], today: "2026-10-01", client });
-    expect(r).toEqual({ ok: false, error: "You didn't call record_request." });
+    expect(r).toEqual({ ok: false, error: "You didn't call record_request.", usage: { input: 2, output: 2 } });
     expect(client.calls.length).toBe(2);
   });
 
   it("doesn't call the model for an empty request", async () => {
     const client = scripted();
-    expect(await parseRequest({ transcript: " ", lang: "es", catalog: [], today: "2026-10-01", client })).toEqual({ ok: false, error: "empty" });
+    expect(await parseRequest({ transcript: " ", lang: "es", catalog: [], today: "2026-10-01", client })).toEqual({ ok: false, error: "empty", usage: { input: 0, output: 0 } });
     expect(client.calls.length).toBe(0);
   });
 });

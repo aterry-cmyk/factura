@@ -8,6 +8,7 @@ import { REMINDER_CHOICES } from "@/lib/types";
 import { localeFor, spokenSummary } from "@/lib/voice";
 import { useSpeech } from "./useSpeech";
 import { useVoice } from "./useVoice";
+import { blockMessage } from "@/lib/plans";
 
 interface EditItem {
   key: number;
@@ -113,11 +114,12 @@ export function Creator({ lang, defaults, ai, cloudVoice = false, edit, children
     if (!res || !res.ok) {
       const code = res ? ((await res.json().catch(() => ({}))) as { error?: string }).error : "";
       setError(
-        code === "not_understood"
+        blockMessage(code, lang) ??
+        (code === "not_understood"
           ? lang === "es"
             ? "No entendí los conceptos. Dilo otra vez con cada cosa y su precio, o escríbelos tú."
             : "I couldn't make out the items. Say it again with each thing and its price, or type them yourself."
-          : t.errorGeneric,
+          : t.errorGeneric),
       );
       return null;
     }
@@ -283,8 +285,9 @@ export function Creator({ lang, defaults, ai, cloudVoice = false, edit, children
       return;
     }
     setBusy(false);
-    const json = res ? ((await res.json().catch(() => ({}))) as { errors?: string[] }) : {};
-    setErrors(json.errors?.map((e) => e.replace(/^[\w.]+: /, "")) ?? [t.errorGeneric]);
+    const json = res ? ((await res.json().catch(() => ({}))) as { errors?: string[]; error?: string }) : {};
+    const blocked = blockMessage(json.error, lang);
+    setErrors(blocked ? [blocked] : json.errors?.map((e) => e.replace(/^[\w.]+: /, "")) ?? [t.errorGeneric]);
   }
 
   // ---------- speak (and the follow-up questions over it) ----------

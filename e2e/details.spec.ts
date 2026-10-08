@@ -1,22 +1,16 @@
-import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import postgres from "postgres";
+import { resetDb, signIn } from "./helpers";
 
 // The assistant asks a few contractor's questions before writing the invoice. The stand-in AI
 // (e2e/fake-services.mjs) asks three about a door and writes the line from the answers.
 test.use({ baseURL: "http://127.0.0.1:3101" });
 
 test.beforeAll(async () => {
-  const sql = postgres(process.env.TEST_DATABASE_URL!, { max: 1, onnotice: () => {} });
-  await sql.unsafe(readFileSync("db/schema.sql", "utf8"));
-  await sql`update settings set voice_on = false where id = 1`;
-  await sql.end();
+  await resetDb();
 });
 
 async function start(page: Page) {
-  await page.goto("/login");
-  await page.getByLabel("Contraseña / Password").fill("prueba-1234");
-  await page.getByRole("button", { name: "Entrar / Sign in" }).click();
+  await signIn(page);
   await page.getByLabel("O escríbelo aquí").fill("Factura para Ana, cambié una puerta 900");
   await page.getByRole("button", { name: "Continuar" }).click();
   const box = page.getByTestId("details");

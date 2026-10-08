@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { dict } from "@/lib/i18n";
 import type { Doc, Lang } from "@/lib/types";
+import { blockMessage } from "@/lib/plans";
 
 type Doc4Actions = Pick<Doc, "id" | "kind" | "status" | "customer" | "publicToken">;
 
@@ -67,7 +68,8 @@ export function DocActions({
     if (res?.ok) window.location.reload();
     else {
       setBusy(null);
-      setMessage({ kind: "bad", text: t.errorGeneric });
+      const code = res ? ((await res.json().catch(() => ({}))) as { error?: string }).error : undefined;
+      setMessage({ kind: "bad", text: blockMessage(code, lang) ?? t.errorGeneric });
     }
   }
 

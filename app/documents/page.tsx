@@ -5,16 +5,18 @@ import { filtersQuery, isOverdue, PAGE_SIZE, parseFilters, type StatusFilter } f
 import { dict, statusLabel } from "@/lib/i18n";
 import { formatMoney, todayIso } from "@/lib/money";
 import { documentTotals, getSettings, searchDocuments } from "@/lib/store";
+import { headerUser, pageCtx } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function DocumentsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const f = parseFilters(await searchParams);
+  const ctx = await pageCtx();
   const today = todayIso();
   const [settings, totals, found] = await Promise.all([
-    getSettings(),
-    documentTotals(today),
-    searchDocuments(f, today, { limit: PAGE_SIZE, offset: (f.page - 1) * PAGE_SIZE }),
+    getSettings(ctx.accountId),
+    documentTotals(ctx.accountId, today),
+    searchDocuments(ctx.accountId, f, today, { limit: PAGE_SIZE, offset: (f.page - 1) * PAGE_SIZE }),
   ]);
   const lang = settings.lang;
   const t = dict(lang);
@@ -33,7 +35,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
 
   return (
     <main className="wrap wide">
-      <Header lang={lang} settingsLabel={t.settings} signOutLabel={t.signOut} />
+      <Header lang={lang} user={headerUser(ctx)} />
       <h1>{t.allDocsTitle}</h1>
 
       <section className="tiles" data-testid="totals">

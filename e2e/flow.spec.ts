@@ -1,23 +1,17 @@
-import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import postgres from "postgres";
+import { resetDb, signIn as ownerSignIn } from "./helpers";
 
 const FAKE = "http://127.0.0.1:3199";
 
 test.beforeAll(async () => {
-  const sql = postgres(process.env.TEST_DATABASE_URL!, { max: 1, onnotice: () => {} });
-  await sql.unsafe(readFileSync("db/schema.sql", "utf8"));
-  await sql`truncate events, documents, customers restart identity cascade`;
-  await sql`delete from settings`;
-  await sql`insert into settings (id) values (1)`;
-  await sql.end();
+  // A set-up account with no business details yet: the first invoice asks for them.
+  await resetDb();
 });
 
 async function signIn(page: Page) {
   await page.goto("/");
   await expect(page).toHaveURL(/\/login$/);
-  await page.getByLabel("Contraseña / Password").fill("prueba-1234");
-  await page.getByRole("button", { name: "Entrar / Sign in" }).click();
+  await ownerSignIn(page);
   await expect(page.getByRole("heading", { name: "Dime qué necesitas" })).toBeVisible();
 }
 
