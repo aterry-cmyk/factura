@@ -1,0 +1,36 @@
+import type { Doc } from "@/lib/types";
+
+/** A sent invoice with everything filled in; tests override what they need. */
+export const sampleDoc = (over: Partial<Doc> = {}): Doc => ({
+  id: "00000000-0000-0000-0000-000000000001",
+  accountId: "00000000-0000-0000-0000-0000000000aa",
+  kind: "invoice",
+  number: "F-0001",
+  status: "sent",
+  customer: { name: "Juan Peña", company: "Peña & Hijos", email: "juan@example.com", phone: "+13015550100" },
+  business: { name: "Pintura Hernández LLC", ownerName: "José Hernández", address: "123 Main St, Silver Spring, MD", phone: "+13015550199", email: "jose@example.com", website: "" },
+  lang: "es",
+  items: [
+    { description: "Pintar cocina (paredes y techo), 2 manos — color «Agua»", quantity: 1, unitPriceCents: 220000, source: "said" },
+    { description: "Materiales", quantity: 1, unitPriceCents: 35000, source: "said" },
+  ],
+  state: "MD",
+  taxRate: 6,
+  subtotalCents: 255000,
+  taxCents: 15300,
+  totalCents: 270300,
+  issueDate: "2026-10-01",
+  dueDate: "2026-10-16",
+  reminderDays: 7,
+  lateFee: { type: "flat", amountCents: 2500, graceDays: 5 },
+  paymentMethods: { zelle: { enabled: true, handle: "301-555-0199" }, check: { enabled: true, payableTo: "Pintura Hernández LLC" } },
+  notes: "Garantía de 1 año. ¡Gracias! 🎨",
+  publicToken: "abcdefghijklmnopqrstuvwx",
+  sentAt: null,
+  paidAt: null,
+  lastReminderAt: null,
+  reminderCount: 0,
+  createdAt: "2026-10-01T12:00:00Z",
+  acceptedAt: null, acceptedBy: "", paidVia: null, paidAmountCents: null,
+  ...over,
+});

@@ -11,6 +11,7 @@ const doc = (over: Partial<Doc> = {}): Doc => ({
   issueDate: "2026-09-01", dueDate: "2026-09-16", reminderDays: 7,
   lateFee: { type: "flat", amountCents: 2500, graceDays: 5 }, paymentMethods: {}, notes: "", publicToken: "t",
   sentAt: null, paidAt: null, lastReminderAt: null, reminderCount: 0, createdAt: "2026-09-01T00:00:00Z",
+  acceptedAt: null, acceptedBy: "", paidVia: null, paidAmountCents: null,
   ...over,
 });
 
@@ -57,7 +58,7 @@ describe("CSV", () => {
     const lines = csv.trim().split("\r\n");
     expect(lines).toHaveLength(3);
     expect(lines[1]).toBe("F-0001,Factura,sent,Juan Pérez,,juan@example.com,,2026-09-01,2026-09-16,1 × Pintar cocina ($2200.00),2200.00,0.00,2200.00,25.00,2225.00,");
-    expect(lines[2]).toContain('Presupuesto,accepted,Ana,"ACME, LLC"');
+    expect(lines[2]).toContain('Estimado,accepted,Ana,"ACME, LLC"');
     expect(lines[2].endsWith(",0.00,0.00,")).toBe(true);
   });
 });

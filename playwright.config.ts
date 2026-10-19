@@ -21,6 +21,10 @@ const env = {
   TWILIO_FROM: "+15555550123",
   TWILIO_API_URL: FAKE,
   CRON_SECRET: "cron-fake",
+  STRIPE_SECRET_KEY: "sk_test_fake",
+  STRIPE_WEBHOOK_SECRET: "whsec_fake",
+  STRIPE_API_URL: FAKE,
+  LORO_FEE_PERCENT: "1",
   APP_URL: "http://127.0.0.1:3100",
 };
 

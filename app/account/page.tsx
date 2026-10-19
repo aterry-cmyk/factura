@@ -21,7 +21,7 @@ export default async function AccountPage() {
   const days = trialDaysLeft(ctx.trialEndsAt);
   const trialOver = ctx.plan === "trial" && days === 0;
   const meters = [
-    { label: es ? "Facturas y presupuestos" : "Invoices and estimates", used: usage.documents, max: plan.documentsPerMonth },
+    { label: es ? "Facturas y estimados" : "Invoices and estimates", used: usage.documents, max: plan.documentsPerMonth },
     { label: es ? "Pedidos al asistente" : "Assistant requests", used: usage.ai, max: plan.aiPerMonth },
   ];
   const month = new Date().toLocaleDateString(es ? "es-US" : "en-US", { month: "long", year: "numeric", timeZone: "UTC" });

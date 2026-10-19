@@ -31,7 +31,7 @@ export function emailContent(doc: Doc, base: string, opts: { reminder?: boolean;
       : `This is a reminder that ${title.toLowerCase()} for ${amount} was due on ${formatDate(doc.dueDate, "en")}.`
     : doc.kind === "estimate"
       ? es
-        ? `Adjuntamos el presupuesto ${doc.number} por ${amount}.`
+        ? `Adjuntamos el estimado ${doc.number} por ${amount}.`
         : `Attached is estimate ${doc.number} for ${amount}.`
       : es
         ? `Adjuntamos la factura ${doc.number} por ${amount}, con vencimiento el ${formatDate(doc.dueDate, "es")}.`

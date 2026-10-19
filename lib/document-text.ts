@@ -60,7 +60,7 @@ export function smsBody(doc: Doc, base: string, opts: { reminder?: boolean; dueC
       ? `${from}: recordatorio, la factura ${doc.number} por ${amount} está pendiente. ${link}`
       : `${from}: reminder, invoice ${doc.number} for ${amount} is unpaid. ${link}`;
   if (doc.kind === "estimate")
-    return es ? `${from} le envió el presupuesto ${doc.number} por ${amount}: ${link}` : `${from} sent you estimate ${doc.number} for ${amount}: ${link}`;
+    return es ? `${from} le envió el estimado ${doc.number} por ${amount}: ${link}` : `${from} sent you estimate ${doc.number} for ${amount}: ${link}`;
   return es
     ? `${from} le envió la factura ${doc.number} por ${amount}, vence el ${formatDate(doc.dueDate, "es")}: ${link}`
     : `${from} sent you invoice ${doc.number} for ${amount}, due ${formatDate(doc.dueDate, "en")}: ${link}`;

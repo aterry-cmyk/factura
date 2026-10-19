@@ -37,6 +37,9 @@ function toSettings(r: Row): Settings {
     voiceOn: r.voice_on !== false,
     voiceGender: r.voice_gender === "male" ? "male" : "female",
     trade: s(r.trade),
+    stripeAccountId: s(r.stripe_account_id),
+    stripeReady: Boolean(r.stripe_charges_enabled),
+    stripeDetailsSubmitted: Boolean(r.stripe_details_submitted),
   };
 }
 
@@ -135,6 +138,10 @@ function toDoc(r: Row): Doc {
     lastReminderAt: iso(r.last_reminder_at),
     reminderCount: n(r.reminder_count),
     createdAt: iso(r.created_at) ?? "",
+    acceptedAt: iso(r.accepted_at),
+    acceptedBy: s(r.accepted_by),
+    paidVia: r.paid_via === "online" ? "online" : r.paid_via === "manual" ? "manual" : null,
+    paidAmountCents: r.paid_amount_cents == null ? null : n(r.paid_amount_cents),
   };
 }
 
@@ -267,6 +274,8 @@ export async function getDocuments(acct: string, ids: string[]): Promise<Doc[]> 
 export async function setStatus(acct: string, id: string, status: DocStatus): Promise<Doc | null> {
   const [row] = await sql()`update documents set status = ${status},
       paid_at = case when ${status} = 'paid' then now() when ${status} = 'sent' then null else paid_at end,
+      paid_via = case when ${status} = 'paid' then 'manual' when ${status} = 'sent' then null else paid_via end,
+      paid_amount_cents = case when ${status} = 'sent' then null else paid_amount_cents end,
       updated_at = now()
     where account_id = ${acct} and id = ${id} returning *`;
   if (row) await recordEvent(id, status === "sent" ? "unpaid" : status, "");
@@ -371,4 +380,114 @@ export async function saveSetup(acct: string, v: import("./setup").Setup): Promi
       where account_id = ${acct}`;
     await tx`update accounts set name = ${v.business.name} where id = ${acct}`;
   });
+}
+
+// ---- Customers accepting estimates, and online payments ----
+
+/** The customer accepts a sent estimate from their link. Only once; returns null otherwise. */
+export async function acceptByToken(token: string, name: string): Promise<Doc | null> {
+  if (!/^[A-Za-z0-9_-]{20,40}$/.test(token)) return null;
+  const [row] = await sql()`update documents set status = 'accepted', accepted_at = now(), accepted_by = ${name.slice(0, 120)},
+      updated_at = now()
+    where public_token = ${token} and kind = 'estimate' and status = 'sent' returning *`;
+  if (!row) return null;
+  await recordEvent(s(row.id), "accepted_by_customer", name);
+  return toDoc(row);
+}
+
+export async function setStripeAccount(acct: string, stripeAccountId: string): Promise<void> {
+  await sql()`update settings set stripe_account_id = ${stripeAccountId}, updated_at = now() where account_id = ${acct}`;
+}
+
+export async function setStripeStatus(acct: string, v: { chargesEnabled: boolean; detailsSubmitted: boolean }): Promise<void> {
+  await sql()`update settings set stripe_charges_enabled = ${v.chargesEnabled}, stripe_details_submitted = ${v.detailsSubmitted},
+    updated_at = now() where account_id = ${acct}`;
+}
+
+export async function rememberCheckout(docId: string, sessionId: string): Promise<void> {
+  await sql()`update documents set stripe_session_id = ${sessionId}, updated_at = now() where id = ${docId}`;
+}
+
+/**
+ * Stripe says the money arrived: the invoice becomes paid (once). The account must match the one
+ * in the payment's metadata, so a payment can never mark another business's invoice.
+ */
+export async function markPaidOnline(p: {
+  docId: string; accountId: string; sessionId: string; paymentIntent: string | null; amountCents: number; feeCents: number;
+}): Promise<Doc | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(p.docId) || !/^[0-9a-f-]{36}$/i.test(p.accountId)) return null;
+  const [row] = await sql()`update documents set status = 'paid', paid_at = now(), paid_via = 'online',
+      paid_amount_cents = ${p.amountCents}, stripe_session_id = ${p.sessionId}, stripe_payment_intent = ${p.paymentIntent},
+      updated_at = now()
+    where id = ${p.docId} and account_id = ${p.accountId} and kind = 'invoice' and status = 'sent' returning *`;
+  if (!row) return null;
+  await recordEvent(p.docId, "paid_online", String(p.amountCents));
+  await sql()`insert into usage_events (account_id, kind, quantity, amount_cents, fee_cents)
+    values (${p.accountId}, 'payment', 1, ${p.amountCents}, ${p.feeCents})`;
+  return toDoc(row);
+}
+
+/** True the first time Stripe's event id is seen; false for a repeat delivery. */
+export async function firstTimeEvent(id: string, type: string): Promise<boolean> {
+  const rows = await sql()`insert into stripe_events (id, type) values (${id}, ${type}) on conflict (id) do nothing returning id`;
+  return rows.length === 1;
+}
+
+/** When handling an event failed, forget it so Stripe's retry is handled. */
+export async function forgetEvent(id: string): Promise<void> {
+  await sql()`delete from stripe_events where id = ${id}`;
+}
+
+// ---- Dashboard ----
+
+/** Per month: invoiced (by issue date, not drafts or void) and collected (by the day it was paid). */
+export async function invoiceMonths(acct: string, since: string): Promise<{ month: string; billed: number; collected: number; online: number }[]> {
+  const rows = await sql()`
+    with billed as (
+      select to_char(issue_date, 'YYYY-MM') as month, sum(total_cents)::bigint as cents from documents
+      where account_id = ${acct} and kind = 'invoice' and status in ('sent','paid') and issue_date >= ${since} group by 1),
+    collected as (
+      select to_char(paid_at at time zone 'UTC', 'YYYY-MM') as month, sum(coalesce(paid_amount_cents, total_cents))::bigint as cents,
+        sum(case when paid_via = 'online' then coalesce(paid_amount_cents, total_cents) else 0 end)::bigint as online
+      from documents where account_id = ${acct} and kind = 'invoice' and status = 'paid' and paid_at >= ${since} group by 1)
+    select coalesce(b.month, c.month) as month, coalesce(b.cents, 0) as billed, coalesce(c.cents, 0) as collected, coalesce(c.online, 0) as online
+    from billed b full join collected c on c.month = b.month`;
+  return rows.map((r) => ({ month: s(r.month), billed: n(r.billed), collected: n(r.collected), online: n(r.online) }));
+}
+
+/** Per month (by issue date): the value of estimates sent, and of those accepted. */
+export async function estimateMonths(acct: string, since: string): Promise<{ month: string; sent: number; accepted: number }[]> {
+  const rows = await sql()`select to_char(issue_date, 'YYYY-MM') as month,
+      sum(total_cents)::bigint as sent, sum(case when status = 'accepted' then total_cents else 0 end)::bigint as accepted
+    from documents where account_id = ${acct} and kind = 'estimate' and status in ('sent','accepted','void') and issue_date >= ${since}
+    group by 1`;
+  return rows.map((r) => ({ month: s(r.month), sent: n(r.sent), accepted: n(r.accepted) }));
+}
+
+/** The estimate numbers: open, accepted this month, decided in the last 90 days, turned into invoices. */
+export async function estimateTotals(acct: string, today: string): Promise<{
+  open: { count: number; cents: number }; acceptedThisMonth: { count: number; cents: number };
+  accepted90: number; declined90: number; converted90: number; drafts: number;
+}> {
+  const month = today.slice(0, 7);
+  const [r] = await sql()`select
+      count(*) filter (where status = 'sent')::int as open_n,
+      coalesce(sum(total_cents) filter (where status = 'sent'), 0)::bigint as open_c,
+      count(*) filter (where status = 'accepted' and to_char(coalesce(accepted_at, updated_at) at time zone 'UTC', 'YYYY-MM') = ${month})::int as acc_n,
+      coalesce(sum(total_cents) filter (where status = 'accepted' and to_char(coalesce(accepted_at, updated_at) at time zone 'UTC', 'YYYY-MM') = ${month}), 0)::bigint as acc_c,
+      count(*) filter (where status = 'accepted' and issue_date >= (${today}::date - 90))::int as acc90,
+      count(*) filter (where status = 'void' and issue_date >= (${today}::date - 90))::int as dec90,
+      count(*) filter (where status = 'draft')::int as drafts
+    from documents where account_id = ${acct} and kind = 'estimate'`;
+  const [c] = await sql()`select count(*)::int as n from documents
+    where account_id = ${acct} and kind = 'invoice' and converted_from is not null and issue_date >= (${today}::date - 90)`;
+  return {
+    open: { count: n(r.open_n), cents: n(r.open_c) },
+    acceptedThisMonth: { count: n(r.acc_n), cents: n(r.acc_c) },
+    accepted90: n(r.acc90), declined90: n(r.dec90), converted90: n(c.n), drafts: n(r.drafts),
+  };
+}
+
+export async function openInvoices(acct: string): Promise<Doc[]> {
+  return (await sql()`select * from documents where account_id = ${acct} and kind = 'invoice' and status = 'sent'`).map(toDoc);
 }

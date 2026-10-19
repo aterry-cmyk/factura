@@ -117,7 +117,7 @@ export function spokenSummary(opts: {
   questions: string[];
 }): string {
   const es = opts.lang === "es";
-  const doc = opts.kind === "invoice" ? (es ? "factura" : "invoice") : es ? "presupuesto" : "estimate";
+  const doc = opts.kind === "invoice" ? (es ? "factura" : "invoice") : es ? "estimado" : "estimate";
   const who = opts.customerName ? (es ? ` para ${opts.customerName}` : ` for ${opts.customerName}`) : "";
   const lines = opts.items.slice(0, MAX_SPOKEN_ITEMS).map((i) => {
     const qty = i.quantity !== 1 ? `${i.quantity} × ` : "";

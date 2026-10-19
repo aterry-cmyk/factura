@@ -3,12 +3,13 @@
 import http from "node:http";
 
 const calls = [];
-let azureFails = false; // tests flip this through /_azure to check the fallback to the device's voice
+let azureFails = false;
+let stripeReady = false; // tests flip this through /_stripe: has the business finished Stripe's sign-up? // tests flip this through /_azure to check the fallback to the device's voice
 const port = Number(process.env.FAKE_PORT || 3199);
 
 function answerFor(text) {
   const request = /<request>\n([\s\S]*?)\n<\/request>/.exec(text)?.[1] ?? "";
-  const isEstimate = /presupuesto|estimate/i.test(request);
+  const isEstimate = /presupuesto|estimado|cotizaci|estimate/i.test(request);
   const items = [];
   if (/cocina/i.test(request)) items.push({ description: "Pintar la cocina", quantity: 1, unit_price: 2200, price_source: "said" });
   if (/ventanas/i.test(request))
@@ -55,6 +56,10 @@ http
         res.end(JSON.stringify(json));
       };
       if (req.url === "/_calls") return send(200, calls);
+      if (req.url?.startsWith("/_stripe")) {
+        stripeReady = req.url.includes("ready=1");
+        return send(200, { stripeReady });
+      }
       if (req.url?.startsWith("/_azure")) {
         azureFails = req.url.includes("fail=1");
         return send(200, { azureFails });
@@ -62,6 +67,18 @@ http
       calls.push({ url: req.url, body });
       if (req.url?.startsWith("/v1/messages")) {
         const params = JSON.parse(body);
+        // Photos: a real (bigger) photo reads as a contractor's notes; a tiny blank one has nothing written.
+        if (params.tools?.[0]?.name === "record_reading") {
+          const image = params.messages[0].content.find((b) => b.type === "image");
+          const readable = (image?.source?.data?.length ?? 0) > 3000;
+          return send(200, {
+            id: "msg_fake", type: "message", role: "assistant", model: params.model, stop_reason: "tool_use", stop_sequence: null,
+            usage: { input_tokens: 900, output_tokens: 40 },
+            content: [{ type: "tool_use", id: "toolu_fake", name: "record_reading", input: readable
+              ? { readable: true, text: "Estimado para Juan\nPintar cocina 2200\nCambiar 3 ventanas", kind_hint: "estimate" }
+              : { readable: false, text: "", kind_hint: "unknown" } }],
+          });
+        }
         const text = String(params.messages[0].content);
         return send(200, {
           id: "msg_fake", type: "message", role: "assistant", model: params.model, stop_reason: "tool_use", stop_sequence: null,
@@ -74,6 +91,18 @@ http
         // Not real audio: the tests record what the page asks to play rather than hearing it.
         res.writeHead(200, { "Content-Type": "audio/mpeg" });
         return res.end(Buffer.from("ID3-fake-mp3"));
+      }
+      // Stripe: accounts, onboarding links, dashboard links and payment pages.
+      if (req.url === "/v1/accounts" && req.method === "POST") return send(200, { id: "acct_fake123", charges_enabled: false, details_submitted: false });
+      if (req.url?.startsWith("/v1/accounts/") && req.url.endsWith("/login_links")) return send(200, { url: "https://connect.stripe.test/express/acct_fake123" });
+      if (req.url?.startsWith("/v1/accounts/")) return send(200, { id: "acct_fake123", charges_enabled: stripeReady, details_submitted: stripeReady });
+      if (req.url === "/v1/account_links") return send(200, { url: "https://connect.stripe.test/setup/acct_fake123" });
+      if (req.url === "/v1/checkout/sessions") {
+        const p = new URLSearchParams(body);
+        return send(200, {
+          id: "cs_test_fake", url: "https://checkout.stripe.test/pay/cs_test_fake", payment_status: "unpaid", payment_intent: null,
+          amount_total: Number(p.get("line_items[0][price_data][unit_amount]")), metadata: {},
+        });
       }
       if (req.url === "/emails") return send(200, { id: "email_fake" });
       if (req.url?.includes("/Messages.json")) return send(201, { sid: "SM_fake" });

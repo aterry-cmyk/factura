@@ -109,6 +109,11 @@ export function DocActions({
             <button className="btn grow" onClick={copyLink}>{t.copyLink}</button>
             <a className="btn grow" href={`/api/documents/${doc.id}/pdf`} target="_blank" rel="noreferrer">{t.downloadPdf}</a>
           </div>
+          {doc.status !== "draft" && (
+            <a className="btn small ghost" href={publicLink} target="_blank" rel="noreferrer" data-testid="public-link">
+              {lang === "es" ? "Ver como lo ve tu cliente ↗" : "See it as your customer does ↗"}
+            </a>
+          )}
           {message && <p className={`note ${message.kind === "ok" ? "" : message.kind}`} role="status" style={{ wordBreak: "break-all" }}>{message.text}</p>}
         </section>
       )}

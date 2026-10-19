@@ -5,14 +5,24 @@ import { aiConfigured } from "@/lib/ai/config";
 import { azureConfigured } from "@/lib/azure-speech";
 import { dict } from "@/lib/i18n";
 import { emailConfigured, smsConfigured } from "@/lib/send";
-import { getSettings } from "@/lib/store";
+import { getSettings, setStripeStatus } from "@/lib/store";
+import { feePercent, getAccount, stripeConfigured } from "@/lib/payments";
+import { PaymentsSettings } from "@/components/PaymentsSettings";
 import { headerUser, pageCtx } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const ctx = await pageCtx();
-  const s = await getSettings(ctx.accountId);
+  let s = await getSettings(ctx.accountId);
+  // Coming back from Stripe (or still waiting on it): ask Stripe where the account stands.
+  if (s.stripeAccountId && stripeConfigured() && !s.stripeReady) {
+    const acct = await getAccount(s.stripeAccountId);
+    if (acct.ok) {
+      await setStripeStatus(ctx.accountId, { chargesEnabled: acct.data.charges_enabled, detailsSubmitted: acct.data.details_submitted });
+      s = await getSettings(ctx.accountId);
+    }
+  }
   const t = dict(s.lang);
   const connections: [string, boolean, string][] = [
     ["Asistente / Assistant (Anthropic)", aiConfigured(), "ANTHROPIC_API_KEY"],
@@ -20,6 +30,7 @@ export default async function SettingsPage() {
     ["SMS (Twilio)", smsConfigured(), "TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM"],
     [s.lang === "es" ? "Voz natural (Azure Speech)" : "Natural voice (Azure Speech)", azureConfigured(), "AZURE_SPEECH_KEY, AZURE_SPEECH_REGION"],
     [s.lang === "es" ? "Recordatorios automáticos" : "Automatic reminders", Boolean(process.env.CRON_SECRET), "CRON_SECRET"],
+    [s.lang === "es" ? "Cobros en línea (Stripe)" : "Online payments (Stripe)", stripeConfigured(), "STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET"],
   ];
   return (
     <main className="wrap">
@@ -29,6 +40,10 @@ export default async function SettingsPage() {
         lang={s.lang}
         hasLogo={s.hasLogo}
         business={{ name: s.name, ownerName: s.ownerName, address: s.address, phone: s.phone, email: s.email, website: s.website }}
+      />
+      <PaymentsSettings
+        lang={s.lang} configured={stripeConfigured()} connected={Boolean(s.stripeAccountId)} ready={s.stripeReady}
+        detailsSubmitted={s.stripeDetailsSubmitted} feePercent={feePercent()} owner={ctx.role === "owner"}
       />
       <VoiceSettings lang={s.lang} country={s.country} voiceOn={s.voiceOn} voiceGender={s.voiceGender} cloud={azureConfigured()} />
       {!ctx.isAdmin && (

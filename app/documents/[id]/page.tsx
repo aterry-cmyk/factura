@@ -5,7 +5,7 @@ import { Header } from "@/components/Header";
 import { appBase } from "@/lib/deliver";
 import { publicUrl } from "@/lib/document-text";
 import { dict, statusLabel } from "@/lib/i18n";
-import { todayIso } from "@/lib/money";
+import { formatMoney, todayIso } from "@/lib/money";
 import { emailConfigured, smsConfigured } from "@/lib/send";
 import { getDocument, getSettings, listEvents } from "@/lib/store";
 import { headers } from "next/headers";
@@ -28,6 +28,10 @@ const EVENT_LABELS: Record<string, [string, string]> = {
   unpaid: ["Marcada no pagada / enviada", "Marked unpaid / sent"],
   void: ["Anulada", "Voided"],
   accepted: ["Aceptado", "Accepted"],
+  accepted_by_customer: ["El cliente lo aceptó", "The customer accepted it"],
+  paid_online: ["Pagada en línea:", "Paid online:"],
+  payment_processing: ["Pago bancario en proceso", "Bank payment processing"],
+  payment_failed: ["El pago bancario falló", "Bank payment failed"],
 };
 
 export default async function DocumentPage({ params }: { params: Promise<{ id: string }> }) {
@@ -67,7 +71,7 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
           {events.map((e, i) => (
             <li key={i} style={{ padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
               <span className="muted">{new Date(e.at).toLocaleString(es ? "es-US" : "en-US")}</span> ·{" "}
-              {(EVENT_LABELS[e.kind] ?? [e.kind, e.kind])[es ? 0 : 1]} {e.kind.endsWith("failed") ? "" : e.detail}
+              {(EVENT_LABELS[e.kind] ?? [e.kind, e.kind])[es ? 0 : 1]} {e.kind.endsWith("failed") ? "" : e.kind === "paid_online" ? formatMoney(Number(e.detail), settings.lang) : e.detail}
             </li>
           ))}
         </ul>

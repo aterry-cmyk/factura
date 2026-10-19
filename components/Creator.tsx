@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { dict, US_STATES } from "@/lib/i18n";
 import { formatMoney, lineTotalCents, parseMoney, totals } from "@/lib/money";
 import type { Doc, DocKind, Lang, LateFee, PaymentMethods, PriceSource, Settings } from "@/lib/types";
@@ -8,6 +8,7 @@ import { REMINDER_CHOICES } from "@/lib/types";
 import { localeFor, spokenSummary } from "@/lib/voice";
 import { useSpeech } from "./useSpeech";
 import { useVoice } from "./useVoice";
+import { shrinkPhoto } from "./shrinkPhoto";
 import { blockMessage } from "@/lib/plans";
 
 interface EditItem {
@@ -65,6 +66,10 @@ export function Creator({ lang, defaults, ai, cloudVoice = false, edit, children
   const [aiMeta, setAiMeta] = useState<{ model: string; promptVersion: string } | null>(null);
 
   const [kind, setKind] = useState<DocKind>(edit?.kind ?? "invoice");
+  /** What the owner picked on Home; null lets Loro tell from the words. */
+  const [chosenKind, setChosenKind] = useState<DocKind | null>(null);
+  const [photoNote, setPhotoNote] = useState<{ kind: "ok" | "bad"; text: string } | null>(null);
+  const photoInput = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<EditItem[]>(edit ? toEditItems(edit.items, false) : []);
   const [customer, setCustomer] = useState(edit?.customer ?? { name: "", company: "", email: "", phone: "" });
   const [business, setBusiness] = useState(
@@ -169,7 +174,8 @@ export function Creator({ lang, defaults, ai, cloudVoice = false, edit, children
   }
 
   function showParsed(p: Parsed) {
-    setKind(p.kind);
+    const k = chosenKind ?? p.kind;
+    setKind(k);
     setCustomer((c) => ({ ...c, name: p.customerName || c.name }));
     setItems(toEditItems(p.items, true));
     setNotes(p.notes);
@@ -177,7 +183,7 @@ export function Creator({ lang, defaults, ai, cloudVoice = false, edit, children
     if (p.customerName) lookupCustomer(p.customerName);
     const said = spokenSummary({
       lang,
-      kind: p.kind,
+      kind: k,
       customerName: p.customerName,
       items: p.items.map((i) => ({ description: i.description, quantity: i.quantity, unitPriceCents: i.unitPriceCents, suggested: i.needsConfirm })),
       totalCents: totals(p.items.map((i) => ({ ...i })), 0).totalCents,
@@ -186,6 +192,32 @@ export function Creator({ lang, defaults, ai, cloudVoice = false, edit, children
     setSummary(said);
     voice.speak(said);
     setStage("review");
+  }
+
+  async function readPhoto(list: FileList | null) {
+    const files = Array.from(list ?? []);
+    if (photoInput.current) photoInput.current.value = "";
+    if (!files.length) return;
+    if (files.length > 4) return setPhotoNote({ kind: "bad", text: t.photoTooMany });
+    speech.stop();
+    setBusy(true);
+    setError("");
+    setPhotoNote({ kind: "ok", text: t.readingPhoto });
+    const form = new FormData();
+    for (const f of files) form.append("photos", await shrinkPhoto(f), "photo.jpg");
+    const res = await fetch("/api/read-photo", { method: "POST", body: form }).catch(() => null);
+    setBusy(false);
+    const json = res ? ((await res.json().catch(() => ({}))) as { text?: string; kindHint?: DocKind | null; error?: string }) : {};
+    if (res?.ok && json.text) {
+      setTranscript((prev) => (prev.trim() ? `${prev.trim()}\n${json.text}` : json.text!));
+      if (!chosenKind && json.kindHint) setChosenKind(json.kindHint);
+      setPhotoNote({ kind: "ok", text: t.photoRead });
+      return;
+    }
+    setPhotoNote({
+      kind: "bad",
+      text: blockMessage(json.error, lang) ?? (json.error === "unreadable" ? t.photoUnreadable : json.error?.startsWith("photo") ? t.photoBad : t.errorGeneric),
+    });
   }
 
   function manual() {
@@ -232,7 +264,7 @@ export function Creator({ lang, defaults, ai, cloudVoice = false, edit, children
     if (name === "customer") return t.qCustomer;
     if (name === "business") return t.qBusiness;
     if (name === "tax") return `${t.qState} ${t.qTax}`;
-    if (name === "due") return kind === "invoice" ? `${t.qDue} ${t.qReminders}` : lang === "es" ? "¿Por cuántos días vale el presupuesto?" : "How many days is the estimate valid?";
+    if (name === "due") return kind === "invoice" ? `${t.qDue} ${t.qReminders}` : lang === "es" ? "¿Por cuántos días vale el estimado?" : "How many days is the estimate valid?";
     if (name === "late") return t.qLate;
     if (name === "pay") return t.qPay;
     return "";
@@ -298,8 +330,17 @@ export function Creator({ lang, defaults, ai, cloudVoice = false, edit, children
     return (
       <>
       <section className="card center stack">
+        <div className="kind-pick" role="group" aria-label={t.whatToMake}>
+          <span className="muted small">{t.whatToMake}</span>
+          <div className="seg">
+            {([["invoice", t.makeInvoice], ["estimate", t.makeEstimate]] as const).map(([k, label]) => (
+              <button key={k} type="button" aria-pressed={chosenKind === k} onClick={() => setChosenKind(chosenKind === k ? null : k)}>{label}</button>
+            ))}
+          </div>
+          {!chosenKind && <span className="muted small">{t.makeAuto}</span>}
+        </div>
         <h1>{t.speakPrompt}</h1>
-        <p className="muted small">{t.speakExample}</p>
+        <p className="muted small">{chosenKind === "estimate" ? t.speakExampleEstimate : t.speakExample}</p>
         {speech.state !== "unsupported" && (
           <button
             className={`mic${listening ? " on" : ""}`}
@@ -319,9 +360,20 @@ export function Creator({ lang, defaults, ai, cloudVoice = false, edit, children
             id="heard"
             value={transcript + (speech.interim ? ` ${speech.interim}` : "")}
             onChange={(e) => setTranscript(e.target.value)}
-            placeholder={t.speakExample.replace(/^[^:]+:\s*/, "").replace(/[«»"]/g, "")}
+            placeholder={(chosenKind === "estimate" ? t.speakExampleEstimate : t.speakExample).replace(/^[^:]+:\s*/, "").replace(/[«»"“”]/g, "")}
           />
         </div>
+        {ai && (
+          <div className="photo-row">
+            <label className="btn photo-btn">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M9 3 7.2 5H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3H9zm3 5a5 5 0 1 1 0 10 5 5 0 0 1 0-10zm0 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>
+              {t.fromPhoto}
+              <input ref={photoInput} type="file" accept="image/*" multiple className="sr" onChange={(e) => readPhoto(e.target.files)} disabled={busy} data-testid="photo-input" />
+            </label>
+            <span className="muted small">{t.fromPhotoHint}</span>
+          </div>
+        )}
+        {photoNote && <p className={`note ${photoNote.kind === "bad" ? "bad" : ""}`} role="status" data-testid="photo-note" style={{ textAlign: "left" }}>{photoNote.text}</p>}
         {!ai && (
           <p className="note warn" style={{ textAlign: "left" }}>
             {lang === "es"
@@ -552,7 +604,7 @@ export function Creator({ lang, defaults, ai, cloudVoice = false, edit, children
         )}
         {current === "due" && (
           <>
-            <h2>{kind === "invoice" ? t.qDue : lang === "es" ? "¿Por cuántos días vale el presupuesto?" : "How many days is the estimate valid?"}</h2>
+            <h2>{kind === "invoice" ? t.qDue : lang === "es" ? "¿Por cuántos días vale el estimado?" : "How many days is the estimate valid?"}</h2>
             <div className="chips">
               {DUE_CHOICES.filter((d) => kind === "invoice" || d > 0).map((d) => (
                 <button key={d} className="chip" aria-pressed={dueDays === d} onClick={() => setDueDays(d)}>

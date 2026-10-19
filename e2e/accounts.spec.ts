@@ -167,7 +167,7 @@ test("my account: plan and use, a password change, and signing out other devices
 
   // This one still works, and signing out works.
   await page.goto("/documents");
-  await expect(page.getByRole("heading", { name: "Todas tus facturas y presupuestos" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Todas tus facturas y estimados" })).toBeVisible();
   await page.getByLabel("Menú de la cuenta").click();
   await page.getByRole("menuitem", { name: "Salir" }).click();
   await expect(page).toHaveURL(/\/login$/);

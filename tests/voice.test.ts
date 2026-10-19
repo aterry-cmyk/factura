@@ -73,7 +73,7 @@ describe("what the app says", () => {
   it("flags suggested prices, reads the assistant's questions, and shortens long lists", () => {
     const items = Array.from({ length: 6 }, (_, i) => ({ description: `Cosa ${i + 1}`, quantity: 2, unitPriceCents: 1000, suggested: i === 0 }));
     const said = spokenSummary({ lang: "es", kind: "estimate", customerName: "", items, totalCents: 12000, questions: ["¿Cuántas ventanas son?"] });
-    expect(said).toContain("Un presupuesto:");
+    expect(said).toContain("Un estimado:");
     expect(said).toContain("Cosa 1, 2 × $10, precio sugerido");
     expect(said).toContain("y 2 más");
     expect(said).not.toContain("Cosa 5");

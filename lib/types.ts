@@ -66,6 +66,10 @@ export interface Settings extends Business {
   voiceGender: "female" | "male";
   /** Their trade (lib/waitlist.ts TRADES), from the setup questions; "" until answered. */
   trade: string;
+  /** Online payments: the business's Stripe account and whether it can take payments yet. */
+  stripeAccountId: string;
+  stripeReady: boolean;
+  stripeDetailsSubmitted: boolean;
 }
 
 export interface Doc {
@@ -95,6 +99,12 @@ export interface Doc {
   lastReminderAt: string | null;
   reminderCount: number;
   createdAt: string;
+  /** An estimate the customer accepted from their link: when, and the name they typed. */
+  acceptedAt: string | null;
+  acceptedBy: string;
+  /** "online" when paid through Loro's Pagar button, "manual" when the owner marked it paid. */
+  paidVia: "online" | "manual" | null;
+  paidAmountCents: number | null;
 }
 
 export const REMINDER_CHOICES = [0, 3, 7, 14, 30] as const;

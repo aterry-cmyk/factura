@@ -116,9 +116,9 @@ test("voice request → confirm the estimator's price → questions in Spanish �
 
 test("an estimate remembers last time's answers and becomes an invoice", async ({ page }) => {
   await signIn(page);
-  await page.getByLabel("O escríbelo aquí").fill("Presupuesto para Juan, cambiar ventanas");
+  await page.getByLabel("O escríbelo aquí").fill("Estimado para Juan, cambiar ventanas");
   await page.getByRole("button", { name: "Continuar" }).click();
-  await expect(page.getByRole("button", { name: "Presupuesto" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Estimado" })).toHaveAttribute("aria-pressed", "true");
   // Changing the suggested price by hand counts as confirming it.
   await page.getByTestId("item").first().getByRole("textbox", { name: "Precio", exact: true }).fill("1600");
   await page.getByRole("button", { name: "Siguiente" }).click();
@@ -135,7 +135,7 @@ test("an estimate remembers last time's answers and becomes an invoice", async (
   await page.getByRole("button", { name: "English" }).last().click();
   await page.getByRole("button", { name: "Crear" }).click();
 
-  await expect(page.getByRole("heading", { name: "Presupuesto P-0001" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Estimado P-0001" })).toBeVisible();
   await expect(page.getByTestId("doc").getByText("ESTIMATE")).toBeVisible();
   await page.getByRole("button", { name: "Convertir en factura" }).click();
   await expect(page.getByRole("heading", { name: "Factura F-0002" })).toBeVisible();

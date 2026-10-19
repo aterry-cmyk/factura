@@ -48,7 +48,7 @@ test("lists every document with totals, search, filters, CSV and bulk actions", 
   await sql.end();
 
   await page.getByRole("link", { name: "Facturas" }).click();
-  await expect(page.getByRole("heading", { name: "Todas tus facturas y presupuestos" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Todas tus facturas y estimados" })).toBeVisible();
   const totals = page.getByTestId("totals");
   await expect(totals.getByRole("link", { name: /Por cobrar\s+\$3,100\.00/ })).toBeVisible();
   await expect(totals.getByRole("link", { name: /Vencido\s+\$2,200\.00/ })).toBeVisible();
@@ -70,11 +70,10 @@ test("lists every document with totals, search, filters, CSV and bulk actions", 
   await expect(page.getByTestId("doc-row")).toHaveCount(1);
   await expect(page.getByTestId("doc-row").getByText("Vencida")).toBeVisible();
   await page.getByRole("link", { name: "Todas", exact: true }).click();
-  await page.getByLabel("Facturas y presupuestos").selectOption("estimate");
-  await page.getByRole("button", { name: "Filtrar" }).click();
+  await page.getByRole("link", { name: "Estimados", exact: true }).click();
   await expect(page.getByTestId("doc-row")).toHaveCount(1);
   await expect(page.getByTestId("doc-row")).toHaveAttribute("data-number", "P-0001");
-  await page.getByRole("link", { name: "Quitar filtros" }).click();
+  await page.getByRole("link", { name: "Resumen", exact: true }).click();
 
   // CSV of what's on screen.
   const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: /Descargar CSV/ }).click()]);

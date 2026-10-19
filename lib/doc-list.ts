@@ -74,7 +74,7 @@ const HEADERS: Record<Lang, string[]> = {
 export function documentsCsv(docs: Doc[], lang: Lang, today: string, statusName: (d: Doc) => string): string {
   const rows = docs.map((d) => [
     d.number,
-    d.kind === "invoice" ? (lang === "es" ? "Factura" : "Invoice") : lang === "es" ? "Presupuesto" : "Estimate",
+    d.kind === "invoice" ? (lang === "es" ? "Factura" : "Invoice") : lang === "es" ? "Estimado" : "Estimate",
     statusName(d),
     d.customer.name,
     d.customer.company,
