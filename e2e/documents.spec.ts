@@ -52,7 +52,7 @@ test("lists every document with totals, search, filters, CSV and bulk actions", 
   const totals = page.getByTestId("totals");
   await expect(totals.getByRole("link", { name: /Por cobrar\s+\$3,100\.00/ })).toBeVisible();
   await expect(totals.getByRole("link", { name: /Vencido\s+\$2,200\.00/ })).toBeVisible();
-  await expect(totals.getByRole("link", { name: /Cobrado este mes\s+\$450\.00/ })).toBeVisible();
+  await expect(totals.getByRole("link", { name: /Cobrado\s+\$450\.00/ })).toBeVisible();
   await expect(page.getByTestId("doc-row")).toHaveCount(5);
 
   // Search finds a customer, and an item description.
@@ -66,14 +66,14 @@ test("lists every document with totals, search, filters, CSV and bulk actions", 
   await page.getByRole("link", { name: "Quitar filtros" }).click();
 
   // Status chips and the overdue tile.
-  await page.getByRole("link", { name: "Vencidas" }).click();
+  await page.getByRole("link", { name: "Vencidas", exact: true }).click();
   await expect(page.getByTestId("doc-row")).toHaveCount(1);
   await expect(page.getByTestId("doc-row").getByText("Vencida")).toBeVisible();
   await page.getByRole("link", { name: "Todas", exact: true }).click();
   await page.getByRole("link", { name: "Estimados", exact: true }).click();
   await expect(page.getByTestId("doc-row")).toHaveCount(1);
   await expect(page.getByTestId("doc-row")).toHaveAttribute("data-number", "P-0001");
-  await page.getByRole("link", { name: "Resumen", exact: true }).click();
+  await page.getByRole("link", { name: "Todo", exact: true }).click();
 
   // CSV of what's on screen.
   const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: /Descargar CSV/ }).click()]);
@@ -100,7 +100,7 @@ test("lists every document with totals, search, filters, CSV and bulk actions", 
   await page.getByRole("button", { name: "Marcar pagadas" }).click();
   await expect(page.getByRole("status")).toHaveText("2 marcadas pagadas.");
   await expect(totals.getByRole("link", { name: /Por cobrar\s+\$0\.00/ })).toBeVisible();
-  await expect(totals.getByRole("link", { name: /Cobrado este mes\s+\$3,550\.00/ })).toBeVisible();
+  await expect(totals.getByRole("link", { name: /Cobrado\s+\$3,550\.00/ })).toBeVisible();
 
   // Bulk: void asks first; a paid invoice can't be voided.
   await row("F-0003").check();

@@ -54,3 +54,17 @@ export function acceptanceRate(accepted: number, declined: number): number | nul
 export function byMonth<T extends { month: string }>(keys: string[], rows: T[], empty: Omit<T, "month">): T[] {
   return keys.map((month) => rows.find((r) => r.month === month) ?? ({ month, ...empty } as T));
 }
+
+export type Period = "month" | "30" | "90" | "year";
+export const PERIODS: Period[] = ["month", "30", "90", "year"];
+export const isPeriod = (v: unknown): v is Period => typeof v === "string" && (PERIODS as string[]).includes(v);
+
+/** The days a period covers, as [from, to) "YYYY-MM-DD", ending tomorrow so today counts. */
+export function periodRange(period: Period, today: string): { from: string; to: string } {
+  const [y, m, d] = today.split("-").map(Number);
+  const day = (dt: Date) => dt.toISOString().slice(0, 10);
+  const to = day(new Date(Date.UTC(y, m - 1, d + 1)));
+  if (period === "month") return { from: `${today.slice(0, 7)}-01`, to };
+  if (period === "year") return { from: `${y}-01-01`, to };
+  return { from: day(new Date(Date.UTC(y, m - 1, d - Number(period) + 1))), to };
+}

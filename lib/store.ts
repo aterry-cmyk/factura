@@ -491,3 +491,66 @@ export async function estimateTotals(acct: string, today: string): Promise<{
 export async function openInvoices(acct: string): Promise<Doc[]> {
   return (await sql()`select * from documents where account_id = ${acct} and kind = 'invoice' and status = 'sent'`).map(toDoc);
 }
+
+/** Everything the dashboard's tiles, donuts and summaries need for one period, per business. */
+export async function periodSummary(acct: string, from: string, to: string) {
+  const [i] = await sql()`select
+      count(*) filter (where status in ('sent','paid') and issue_date >= ${from} and issue_date < ${to})::int as issued_n,
+      coalesce(sum(total_cents) filter (where status in ('sent','paid') and issue_date >= ${from} and issue_date < ${to}), 0)::bigint as issued_c,
+      count(*) filter (where status = 'paid' and paid_at >= ${from} and paid_at < ${to})::int as paid_n,
+      coalesce(sum(coalesce(paid_amount_cents, total_cents)) filter (where status = 'paid' and paid_at >= ${from} and paid_at < ${to}), 0)::bigint as paid_c,
+      coalesce(sum(coalesce(paid_amount_cents, total_cents)) filter (where status = 'paid' and paid_via = 'online' and paid_at >= ${from} and paid_at < ${to}), 0)::bigint as online_c,
+      count(*) filter (where status = 'paid' and paid_via = 'online' and paid_at >= ${from} and paid_at < ${to})::int as online_n,
+      coalesce(avg(extract(epoch from (paid_at - issue_date::timestamptz)) / 86400) filter (where status = 'paid' and paid_at >= ${from} and paid_at < ${to}), -1)::float as avg_days,
+      count(*) filter (where status = 'void' and issue_date >= ${from} and issue_date < ${to})::int as void_n
+    from documents where account_id = ${acct} and kind = 'invoice'`;
+  const [e] = await sql()`select
+      count(*) filter (where status in ('sent','accepted','void'))::int as sent_n,
+      coalesce(sum(total_cents) filter (where status in ('sent','accepted','void')), 0)::bigint as sent_c,
+      count(*) filter (where status = 'accepted')::int as acc_n,
+      coalesce(sum(total_cents) filter (where status = 'accepted'), 0)::bigint as acc_c,
+      count(*) filter (where status = 'void')::int as dec_n,
+      coalesce(sum(total_cents) filter (where status = 'void'), 0)::bigint as dec_c,
+      count(*) filter (where status = 'sent')::int as open_n,
+      coalesce(sum(total_cents) filter (where status = 'sent'), 0)::bigint as open_c
+    from documents where account_id = ${acct} and kind = 'estimate' and issue_date >= ${from} and issue_date < ${to}`;
+  const [c] = await sql()`select count(*)::int as n from documents
+    where account_id = ${acct} and kind = 'invoice' and converted_from is not null and issue_date >= ${from} and issue_date < ${to}`;
+  const [r] = await sql()`select count(*)::int as n from events ev join documents d on d.id = ev.document_id
+    where d.account_id = ${acct} and ev.kind in ('reminder_email','reminder_sms') and ev.created_at >= ${from} and ev.created_at < ${to}`;
+  const [o] = await sql()`select
+      count(*) filter (where status = 'draft')::int as drafts,
+      count(*) filter (where kind = 'estimate' and status = 'sent')::int as est_waiting
+    from documents where account_id = ${acct}`;
+  return {
+    invoices: {
+      issued: { count: n(i.issued_n), cents: n(i.issued_c) },
+      collected: { count: n(i.paid_n), cents: n(i.paid_c) },
+      online: { count: n(i.online_n), cents: n(i.online_c) },
+      avgDaysToPay: Number(i.avg_days) < 0 ? null : Math.round(Number(i.avg_days)),
+      voided: n(i.void_n),
+    },
+    estimates: {
+      sent: { count: n(e.sent_n), cents: n(e.sent_c) },
+      accepted: { count: n(e.acc_n), cents: n(e.acc_c) },
+      declined: { count: n(e.dec_n), cents: n(e.dec_c) },
+      open: { count: n(e.open_n), cents: n(e.open_c) },
+      converted: n(c.n),
+    },
+    remindersSent: n(r.n),
+    drafts: n(o.drafts),
+    estimatesWaiting: n(o.est_waiting),
+  };
+}
+export type PeriodSummary = Awaited<ReturnType<typeof periodSummary>>;
+
+/** The latest things that happened to this business's documents, newest first. */
+export async function recentActivity(acct: string, limit = 8): Promise<{ kind: string; at: string; docId: string; number: string; docKind: DocKind; customer: string; detail: string }[]> {
+  const rows = await sql()`select ev.kind, ev.created_at, ev.detail, d.id, d.number, d.kind as doc_kind, d.customer->>'name' as customer
+    from events ev join documents d on d.id = ev.document_id
+    where d.account_id = ${acct} and ev.kind not like '%failed' order by ev.created_at desc limit ${limit}`;
+  return rows.map((r) => ({
+    kind: s(r.kind), at: iso(r.created_at) ?? "", docId: s(r.id), number: s(r.number), docKind: r.doc_kind as DocKind,
+    customer: s(r.customer), detail: s(r.detail),
+  }));
+}

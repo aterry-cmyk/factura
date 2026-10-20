@@ -166,23 +166,33 @@ test("online payments: connect Stripe, the customer pays, Stripe confirms, the i
   await expect(page.getByText("Pagada en línea: $2,200.00")).toBeVisible();
 });
 
-test("the dashboard: overview, invoices with how late and who owes, estimates with acceptance", async ({ page }) => {
+test("the dashboard: KPIs, by age, donuts, to-dos, activity, periods and type tabs", async ({ page }) => {
   await signIn(page);
   await makeSent(page, "invoice", "Carlos Ruiz", "Pintar 3 cuartos", 310000);
-  await page.goto("/documents");
-  await expect(page.getByTestId("totals")).toBeVisible();
-  await expect(page.getByTestId("estimate-totals")).toBeVisible();
-  await expect(page.getByTestId("invoice-chart")).toContainText("Facturado y cobrado por mes");
-
-  await page.getByRole("link", { name: "Facturas", exact: true }).last().click();
-  await expect(page).toHaveURL(/kind=invoice/);
+  await page.getByRole("link", { name: "Facturas" }).first().click();
+  await expect(page).toHaveURL(/\/documents$/);
+  const kpis = page.getByTestId("totals");
+  await expect(kpis.getByRole("link", { name: /Por cobrar\s+\$3,100\.00/ })).toBeVisible();
+  await expect(kpis.getByRole("link", { name: /Cobrado\s+\$2,200\.00/ })).toBeVisible();
+  await expect(kpis.getByRole("link", { name: /Tasa de aceptación/ })).toBeVisible();
   await expect(page.getByTestId("aging")).toContainText("Al día");
   await expect(page.getByTestId("aging").getByRole("link", { name: "Carlos Ruiz" })).toBeVisible();
-  await expect(page.getByTestId("estimate-totals")).toHaveCount(0);
+  await expect(page.getByTestId("estimate-donut")).toContainText("Aceptados");
+  await expect(page.getByTestId("payments-donut")).toContainText("En línea$2,200.00");
+  await expect(page.getByTestId("pending")).toContainText("Estimados esperando respuesta");
+  await expect(page.getByTestId("activity")).toContainText("Pagada en línea: $2,200.00");
+  await expect(page.getByTestId("invoice-chart")).toContainText("Facturado y cobrado por mes");
 
+  // The period changes the period numbers and stays on the type tabs.
+  await page.getByRole("link", { name: "Este año" }).click();
+  await expect(page).toHaveURL(/period=year/);
   await page.getByRole("link", { name: "Estimados", exact: true }).click();
-  await expect(page).toHaveURL(/kind=estimate/);
-  await expect(page.getByTestId("estimate-totals")).toContainText("Tasa de aceptación");
-  await expect(page.getByTestId("estimate-chart")).toBeVisible();
-  await expect(page.getByTestId("totals")).toHaveCount(0);
+  await expect(page).toHaveURL(/kind=estimate.*period=year|period=year.*kind=estimate/);
+  await expect(page.getByRole("heading", { name: "Tus estimados" })).toBeVisible();
+
+  // Search from the top bar.
+  await page.getByPlaceholder("Buscar cliente, número o trabajo…").fill("Carlos");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/q=Carlos/);
+  await expect(page.getByTestId("doc-row")).toHaveCount(1);
 });

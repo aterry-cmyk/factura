@@ -103,4 +103,4 @@ export async function endOtherSessions(userId: string, keepSessionId?: string): 
 }
 
 /** Only what the header shows; never send the session id or plan details to the browser. */
-export const headerUser = (ctx: Ctx) => ({ name: ctx.name, email: ctx.email, isAdmin: ctx.isAdmin });
+export const headerUser = (ctx: Ctx) => ({ name: ctx.name, email: ctx.email, isAdmin: ctx.isAdmin, business: ctx.accountName });
