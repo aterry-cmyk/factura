@@ -71,7 +71,7 @@ async function withTool<T>(opts: {
 }): Promise<(T & { errors: string[] }) | null> {
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: opts.content }];
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const res = await opts.client.create({ model: MODEL, max_tokens: 2000, system: opts.system, messages, tools: [opts.tool], tool_choice: { type: "tool", name: opts.tool.name } });
+    const res = await opts.client.create({ model: MODEL, max_tokens: 2000, system: opts.system, messages, tools: [opts.tool], tool_choice: { type: "auto" } });
     opts.usage.input += res.usage?.input_tokens ?? 0;
     opts.usage.output += res.usage?.output_tokens ?? 0;
     const call = res.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");

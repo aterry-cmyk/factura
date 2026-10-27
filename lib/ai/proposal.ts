@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { isUnit, MAX_LINES, MAX_SECTIONS, type ProposalLine, type ProposalSection } from "@/lib/proposal";
 import type { Lang } from "@/lib/types";
 import { MODEL } from "./config";
+import { withTool } from "./costs";
 import { anthropicClient, type AiClient, type TokenUsage } from "./parse";
 import type { CatalogEntry } from "./prompts/parse-request";
 import { ASK_TOOL, PROPOSAL_PROMPT_VERSION, PROPOSAL_TOOL, proposalSystemPrompt, proposalUserMessage, questionsSystemPrompt } from "./prompts/proposal";
@@ -13,11 +14,6 @@ import { ASK_TOOL, PROPOSAL_PROMPT_VERSION, PROPOSAL_TOOL, proposalSystemPrompt,
 
 const clip = (v: unknown, n: number): string =>
   typeof v === "string" ? v.replace(/<[^>]*>/g, "").replace(/[\u0000-\u001F]/g, " ").replace(/\s+/g, " ").trim().slice(0, n) : "";
-const addUsage = (u: TokenUsage, res: Anthropic.Message) => { u.input += res.usage?.input_tokens ?? 0; u.output += res.usage?.output_tokens ?? 0; };
-const toolCall = (res: Anthropic.Message, name: string): Record<string, unknown> | null => {
-  const call = res.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use" && b.name === name);
-  return call ? ((call.input ?? {}) as Record<string, unknown>) : null;
-};
 
 export interface ScopeQuestion { question: string; options: string[] }
 export type Answer = { question: string; answer: string };
@@ -28,13 +24,11 @@ export interface JobInput { name: string; description: string; trade: string; an
 export async function scopeQuestions(opts: JobInput): Promise<QuestionsResult> {
   const usage: TokenUsage = { input: 0, output: 0 };
   const client = opts.client ?? anthropicClient();
-  const res = await client.create({
+  const { input: r } = await withTool(client, {
     model: MODEL, max_tokens: 1200, system: questionsSystemPrompt(opts.lang),
     messages: [{ role: "user", content: proposalUserMessage({ ...opts, catalog: [] }) }],
-    tools: [ASK_TOOL as Anthropic.Tool], tool_choice: { type: "tool", name: ASK_TOOL.name },
-  });
-  addUsage(usage, res);
-  const r = toolCall(res, ASK_TOOL.name);
+    tools: [ASK_TOOL as Anthropic.Tool], tool_choice: { type: "auto" },
+  }, ASK_TOOL.name, usage);
   if (!r) return { ok: false, error: "no_answer", usage };
   const asked = new Set(opts.answers.map((a) => a.question.toLowerCase()));
   const questions = (Array.isArray(r.questions) ? r.questions : []).slice(0, 5).flatMap((q) => {
@@ -103,12 +97,10 @@ export async function buildProposal(opts: JobInput & { catalog: CatalogEntry[] }
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: proposalUserMessage(opts) }];
   let last = "no_answer";
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const res = await client.create({
+    const { res, input: r } = await withTool(client, {
       model: MODEL, max_tokens: 4000, system: proposalSystemPrompt(opts.lang), messages,
-      tools: [PROPOSAL_TOOL as Anthropic.Tool], tool_choice: { type: "tool", name: PROPOSAL_TOOL.name },
-    });
-    addUsage(usage, res);
-    const r = toolCall(res, PROPOSAL_TOOL.name);
+      tools: [PROPOSAL_TOOL as Anthropic.Tool], tool_choice: { type: "auto" },
+    }, PROPOSAL_TOOL.name, usage);
     const checked = checkProposal(r, given, opts.catalog);
     if (checked.value) return { ok: true, value: checked.value, usage, model: res.model ?? MODEL, promptVersion: PROPOSAL_PROMPT_VERSION };
     last = checked.errors.join(" ");

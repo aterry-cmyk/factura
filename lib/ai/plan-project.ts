@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { Lang } from "@/lib/types";
 import { validatePlan, type PlanMilestone } from "@/lib/projects";
 import { MODEL } from "./config";
+import { withTool } from "./costs";
 import { anthropicClient, type AiClient, type TokenUsage } from "./parse";
 import { PLAN_PROMPT_VERSION, PLAN_TOOL, planSystemPrompt, planUserMessage } from "./prompts/plan-project";
 
@@ -22,18 +23,15 @@ export async function planProject(opts: {
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: planUserMessage(opts) }];
   let lastError = "no_answer";
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const res = await client.create({
+    const { res, input } = await withTool(client, {
       model: MODEL,
       max_tokens: 2500,
       system: planSystemPrompt(opts.lang),
       messages,
       tools: [PLAN_TOOL as Anthropic.Tool],
-      tool_choice: { type: "tool", name: PLAN_TOOL.name },
-    });
-    usage.input += res.usage?.input_tokens ?? 0;
-    usage.output += res.usage?.output_tokens ?? 0;
-    const call = res.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
-    const raw = call ? (call.input as { milestones?: unknown } | null)?.milestones : undefined;
+      tool_choice: { type: "auto" },
+    }, PLAN_TOOL.name, usage);
+    const raw = input ? (input as { milestones?: unknown }).milestones : undefined;
     const checked = validatePlan(raw);
     if (checked.ok) return { ok: true, plan: checked.value, model: res.model ?? MODEL, promptVersion: PLAN_PROMPT_VERSION, usage };
     lastError = checked.errors.join(" ");

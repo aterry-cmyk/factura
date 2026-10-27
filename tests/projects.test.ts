@@ -143,7 +143,7 @@ describe("the planner", () => {
       expect(r.usage).toEqual({ input: 100, output: 50 });
     }
     expect(calls).toHaveLength(1);
-    expect(calls[0].tool_choice).toEqual({ type: "tool", name: "plan_project" });
+    expect(calls[0].tool_choice).toEqual({ type: "auto" });
     const user = String(calls[0].messages[0].content);
     expect(user).toContain("- Gabinetes (x2)");
     expect(user).not.toContain("<script>");

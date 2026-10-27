@@ -21,6 +21,22 @@ function toolCall(res: Anthropic.Message, name: string): Record<string, unknown>
   const call = res.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use" && b.name === name);
   return call ? ((call.input ?? {}) as Record<string, unknown>) : null;
 }
+
+/**
+ * The production model doesn't accept a forced tool choice, so the tool is "auto" and a reply in
+ * prose gets one nudge ("Answer with the X tool") before the call counts as failed.
+ */
+export async function withTool(client: AiClient, params: Anthropic.MessageCreateParamsNonStreaming, name: string, usage: TokenUsage): Promise<{ res: Anthropic.Message; input: Record<string, unknown> | null }> {
+  let res = await client.create(params);
+  addUsage(usage, res);
+  let input = toolCall(res, name);
+  if (!input) {
+    res = await client.create({ ...params, messages: [...params.messages, { role: "assistant", content: res.content.length ? res.content : "(no answer)" }, { role: "user", content: `Answer with the ${name} tool.` }] });
+    addUsage(usage, res);
+    input = toolCall(res, name);
+  }
+  return { res, input };
+}
 const addUsage = (u: TokenUsage, res: Anthropic.Message) => {
   u.input += res.usage?.input_tokens ?? 0;
   u.output += res.usage?.output_tokens ?? 0;
@@ -88,14 +104,12 @@ export async function recordCosts(opts: { text: string; workers: Worker[]; burde
   const text = opts.text.trim().slice(0, 2000);
   if (!text) return { ok: false, error: "empty", usage };
   const client = opts.client ?? anthropicClient();
-  const res = await client.create({
+  const { input } = await withTool(client, {
     model: MODEL, max_tokens: 1500,
     system: costSystemPrompt(opts.lang, opts.workers.filter((w) => w.active).map((w) => w.name), opts.today),
     messages: [{ role: "user", content: `<spent>\n${text.replace(/[<>]/g, "")}\n</spent>` }],
-    tools: [COSTS_TOOL as Anthropic.Tool], tool_choice: { type: "tool", name: COSTS_TOOL.name },
-  });
-  addUsage(usage, res);
-  const input = toolCall(res, COSTS_TOOL.name);
+    tools: [COSTS_TOOL as Anthropic.Tool], tool_choice: { type: "auto" },
+  }, COSTS_TOOL.name, usage);
   if (!input) return { ok: false, error: "no_answer", usage };
   const entries = checkCosts(input, text, opts.workers, opts.burden, opts.today);
   if (!entries.length) return { ok: false, error: "nothing_found", usage };
@@ -115,16 +129,14 @@ export type ReceiptResult = { ok: true; value: ReceiptReading; usage: TokenUsage
 export async function readReceipt(opts: { photo: { type: PhotoType; base64: string }; lang: Lang; client?: AiClient }): Promise<ReceiptResult> {
   const usage: TokenUsage = { input: 0, output: 0 };
   const client = opts.client ?? anthropicClient();
-  const res = await client.create({
+  const { input: r } = await withTool(client, {
     model: MODEL, max_tokens: 2000, system: receiptSystemPrompt(opts.lang),
     messages: [{ role: "user", content: [
       { type: "image", source: { type: "base64", media_type: opts.photo.type, data: opts.photo.base64 } },
       { type: "text", text: "Copy what is printed on this receipt." },
     ] }],
-    tools: [RECEIPT_TOOL as Anthropic.Tool], tool_choice: { type: "tool", name: RECEIPT_TOOL.name },
-  });
-  addUsage(usage, res);
-  const r = toolCall(res, RECEIPT_TOOL.name);
+    tools: [RECEIPT_TOOL as Anthropic.Tool], tool_choice: { type: "auto" },
+  }, RECEIPT_TOOL.name, usage);
   if (!r) return { ok: false, error: "failed", usage };
   const totalCents = dollars(r.total);
   if (r.readable !== true || totalCents === null || totalCents === 0) return { ok: false, error: "unreadable", usage };
@@ -149,16 +161,14 @@ export const isPdf = (bytes: Uint8Array): boolean => bytes.length > 5 && String.
 export async function readPlans(opts: { pdfBase64: string; lang: Lang; client?: AiClient }): Promise<TakeoffResult> {
   const usage: TokenUsage = { input: 0, output: 0 };
   const client = opts.client ?? anthropicClient();
-  const res = await client.create({
+  const { input: r } = await withTool(client, {
     model: MODEL, max_tokens: 4000, system: plansSystemPrompt(opts.lang),
     messages: [{ role: "user", content: [
       { type: "document", source: { type: "base64", media_type: "application/pdf", data: opts.pdfBase64 } },
       { type: "text", text: "Take off the quantities from these plans." },
     ] }],
-    tools: [TAKEOFF_TOOL as Anthropic.Tool], tool_choice: { type: "tool", name: TAKEOFF_TOOL.name },
-  });
-  addUsage(usage, res);
-  const r = toolCall(res, TAKEOFF_TOOL.name);
+    tools: [TAKEOFF_TOOL as Anthropic.Tool], tool_choice: { type: "auto" },
+  }, TAKEOFF_TOOL.name, usage);
   if (!r) return { ok: false, error: "failed", usage };
   const lines = (Array.isArray(r.lines) ? r.lines : []).slice(0, 60).flatMap((l) => {
     const x = (l ?? {}) as Record<string, unknown>;
