@@ -23,6 +23,7 @@ One sign-in. No accounting, no payment processing. It shows his payment instruct
 | Customer link | `/i/<token>`: the document and its PDF, no sign-in. Opens once the document is sent or its link is copied. |
 | Reminders | `/api/cron/reminders`, daily through Vercel Cron. Starts on the due date, repeats every N days, stops when paid or after 6. Includes the late fee owed that day. |
 | Estimates | Same flow; "Turn into invoice" copies it with today's saved terms. |
+| AI Estimator | `/estimator` ("Estimador" in the rail), for pricing a remodel with the customer: a photo of the room or the front of the house → Claude says what it sees and which projects fit (only the price book's projects for that space, `lib/ai/estimator.ts`) → a few questions per project (`lib/estimator/pricebook.ts`), with AI example pictures for quality and material choices → the look (`lib/estimator/catalog.ts`) → a preview made from the customer's own photo (fal.ai) with similar products to look for at Home Depot (search links, no prices) → a price range and time on site → **Crear el estimado** opens the normal review with every line as a *suggested* price, the range as its reason, which he confirms like any other. Prompts sent to the image models are built only from catalog phrases picked by id. Without `FAL_KEY` the pictures say "setup needed" and the estimate still works. The price book's ranges are typical U.S. starting points, not the owner's prices. |
 
 ## Setup (Supabase + Vercel)
 
@@ -49,6 +50,7 @@ One sign-in. No accounting, no payment processing. It shows his payment instruct
 | `RESEND_API_KEY`, `EMAIL_FROM` | optional, email |
 | `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION` | optional, natural voice per country (a Speech resource in Azure; region like `eastus`) |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` | optional, SMS |
+| `FAL_KEY` | optional, the estimator's example pictures and previews (fal.ai) |
 
 - Deploy. `vercel.json` schedules `/api/cron/reminders` daily at 15:00 UTC (once a day works on the Hobby plan too).
 - Sign in at the address, open **Ajustes**: Connections shows what's connected; add the logo there.

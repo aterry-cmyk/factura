@@ -50,9 +50,17 @@ function toEditItems(items: { description: string; quantity: number; unitPriceCe
 
 type Stage = "speak" | "details" | "review" | "wizard";
 
-export function Creator({ lang, defaults, ai, cloudVoice = false, edit, children }: { lang: Lang; defaults: Settings; ai: boolean; cloudVoice?: boolean; edit?: Doc; children?: React.ReactNode }) {
+/** A draft made elsewhere (the estimator): opens straight in review, its suggested prices still to confirm. */
+export interface Prefill {
+  kind: DocKind;
+  items: { description: string; quantity: number; unitPriceCents: number; source: PriceSource; basis?: string }[];
+  notes: string;
+  ai: { model: string; promptVersion: string };
+}
+
+export function Creator({ lang, defaults, ai, cloudVoice = false, edit, prefill, children }: { lang: Lang; defaults: Settings; ai: boolean; cloudVoice?: boolean; edit?: Doc; prefill?: Prefill; children?: React.ReactNode }) {
   const t = dict(lang);
-  const [stage, setStage] = useState<Stage>(edit ? "review" : "speak");
+  const [stage, setStage] = useState<Stage>(edit || prefill ? "review" : "speak");
   const [transcript, setTranscript] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -63,14 +71,14 @@ export function Creator({ lang, defaults, ai, cloudVoice = false, edit, children
   const [asking, setAsking] = useState(0);
   const [draftAnswer, setDraftAnswer] = useState("");
   const [firstPass, setFirstPass] = useState<Parsed | null>(null);
-  const [aiMeta, setAiMeta] = useState<{ model: string; promptVersion: string } | null>(null);
+  const [aiMeta, setAiMeta] = useState<{ model: string; promptVersion: string } | null>(prefill?.ai ?? null);
 
-  const [kind, setKind] = useState<DocKind>(edit?.kind ?? "invoice");
+  const [kind, setKind] = useState<DocKind>(edit?.kind ?? prefill?.kind ?? "invoice");
   /** What the owner picked on Home; null lets Loro tell from the words. */
   const [chosenKind, setChosenKind] = useState<DocKind | null>(null);
   const [photoNote, setPhotoNote] = useState<{ kind: "ok" | "bad"; text: string } | null>(null);
   const photoInput = useRef<HTMLInputElement>(null);
-  const [items, setItems] = useState<EditItem[]>(edit ? toEditItems(edit.items, false) : []);
+  const [items, setItems] = useState<EditItem[]>(edit ? toEditItems(edit.items, false) : prefill ? toEditItems(prefill.items, true) : []);
   const [customer, setCustomer] = useState(edit?.customer ?? { name: "", company: "", email: "", phone: "" });
   const [business, setBusiness] = useState(
     edit?.business ?? {
@@ -90,7 +98,7 @@ export function Creator({ lang, defaults, ai, cloudVoice = false, edit, children
   const [lateFee, setLateFee] = useState<LateFee>(edit?.lateFee ?? defaults.lateFee);
   const [payment, setPayment] = useState<PaymentMethods>(edit?.paymentMethods ?? defaults.paymentMethods);
   const [docLang, setDocLang] = useState<Lang>(edit?.lang ?? lang);
-  const [notes, setNotes] = useState(edit?.notes ?? "");
+  const [notes, setNotes] = useState(edit?.notes ?? prefill?.notes ?? "");
   const [step, setStep] = useState(0);
   const [suggestions, setSuggestions] = useState<{ id: string; name: string; company: string; email: string; phone: string }[]>([]);
 

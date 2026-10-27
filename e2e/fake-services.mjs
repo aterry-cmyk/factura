@@ -79,6 +79,32 @@ http
               : { readable: false, text: "", kind_hint: "unknown" } }],
           });
         }
+        // The estimator: a kitchen photo, and the products in its preview.
+        if (params.tools?.[0]?.name === "record_space") {
+          return send(200, {
+            id: "msg_fake", type: "message", role: "assistant", model: params.model, stop_reason: "tool_use", stop_sequence: null,
+            usage: { input_tokens: 800, output_tokens: 60 },
+            content: [{ type: "tool_use", id: "toolu_fake", name: "record_space", input: {
+              is_home: true, space: "kitchen", summary: "Una cocina con gabinetes de roble y encimeras de laminado.", condition: "worn",
+              observations: ["Gabinetes de roble gastados", "Encimeras de laminado"],
+              suggestions: [{ trade: "kitchen", reason: "Gabinetes y encimeras viejos", priority: "high" }, { trade: "roofing", reason: "no aplica", priority: "high" }, { trade: "flooring", reason: "Piso rayado", priority: "low" }],
+            } }],
+          });
+        }
+        if (params.tools?.[0]?.name === "record_products") {
+          return send(200, {
+            id: "msg_fake", type: "message", role: "assistant", model: params.model, stop_reason: "tool_use", stop_sequence: null,
+            usage: { input_tokens: 700, output_tokens: 80 },
+            content: [{ type: "tool_use", id: "toolu_fake", name: "record_products", input: {
+              products: [
+                { category: "Gabinetes", name: "Gabinetes tipo shaker", details: "Azul marino", search: "navy shaker cabinets" },
+                { category: "Encimeras", name: "Encimera de cuarzo", details: "Blanca", search: "white quartz countertop" },
+                { category: "Grifo", name: "Grifo de cocina", details: "Negro mate", search: "matte black kitchen faucet" },
+              ],
+              notes: ["Confirmar las medidas de la isla."],
+            } }],
+          });
+        }
         const text = String(params.messages[0].content);
         return send(200, {
           id: "msg_fake", type: "message", role: "assistant", model: params.model, stop_reason: "tool_use", stop_sequence: null,
@@ -86,6 +112,8 @@ http
           content: [{ type: "tool_use", id: "toolu_fake", name: "record_request", input: answerFor(text) }],
         });
       }
+      // fal.ai: example pictures and the preview.
+      if (req.url?.startsWith("/fal-ai/")) return send(200, { images: [{ url: `https://v3b.fal.media/files/fake/${req.url.split("/")[2]}.jpg` }] });
       if (req.url === "/cognitiveservices/v1") {
         if (azureFails) return send(401, { error: "bad key" });
         // Not real audio: the tests record what the page asks to play rather than hearing it.

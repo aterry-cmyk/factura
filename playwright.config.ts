@@ -25,6 +25,8 @@ const env = {
   STRIPE_WEBHOOK_SECRET: "whsec_fake",
   STRIPE_API_URL: FAKE,
   LORO_FEE_PERCENT: "1",
+  FAL_KEY: "fake",
+  FAL_API_URL: FAKE,
   APP_URL: "http://127.0.0.1:3100",
 };
 
