@@ -105,6 +105,43 @@ http
             } }],
           });
         }
+        const toolNames = (params.tools ?? []).map((t) => t.name);
+        const toolMsg = (name, input, extra = []) => send(200, {
+          id: "msg_fake", type: "message", role: "assistant", model: params.model, stop_reason: "tool_use", stop_sequence: null,
+          usage: { input_tokens: 300, output_tokens: 60 },
+          content: [...extra, { type: "tool_use", id: "toolu_fake", name, input }],
+        });
+        // Costs: "Pedro 8 horas" and a material with an amount; an amount nobody said is flagged by the app.
+        if (toolNames.includes("record_costs")) {
+          const spent = /<spent>\n([\s\S]*?)\n<\/spent>/.exec(String(params.messages[0].content))?.[1] ?? "";
+          const entries = [];
+          if (/pedro/i.test(spent)) entries.push({ code: "labor", amount: 0, description: "Jornada", vendor: "", worker: "Pedro", hours: 8, spent_on: "2026-10-27" });
+          if (/pintura/i.test(spent)) entries.push({ code: "materials", amount: 340, description: "Pintura", vendor: "Home Depot", worker: "", hours: 0, spent_on: "2026-10-27" });
+          if (/plomero/i.test(spent)) entries.push({ code: "subs", amount: 650, description: "Plomero", vendor: "", worker: "", hours: 0, spent_on: "2026-10-27" });
+          return toolMsg("record_costs", { entries });
+        }
+        if (toolNames.includes("record_receipt")) {
+          const image = params.messages[0].content.find((b) => b.type === "image");
+          const readable = (image?.source?.data?.length ?? 0) > 3000;
+          return toolMsg("record_receipt", readable
+            ? { readable: true, vendor: "Home Depot", date: "2026-10-20", total: 184.32, lines: [{ description: "Drywall 1/2 4x8", amount: 120 }, { description: "Tornillos", amount: 64.32 }] }
+            : { readable: false, vendor: "", date: "", total: 0, lines: [] });
+        }
+        if (toolNames.includes("record_takeoff")) {
+          return toolMsg("record_takeoff", { readable: true, summary: "Planos de una sala", lines: [
+            { item: "Piso de madera", quantity: 320, unit: "SF", where: "A-2, sala 16x20" },
+            { item: "Zoclo", quantity: 72, unit: "LF", where: "A-2" },
+          ] });
+        }
+        if (toolNames.includes("record_prices")) {
+          return toolMsg("record_prices", { options: [
+            { vendor: "Home Depot", product: "1/2 in. x 4 ft. x 8 ft. Drywall", price: 15.98, unit: "per sheet", url: "https://www.homedepot.com/p/drywall-123", where: "Beltsville" },
+            { vendor: "Nowhere", product: "Drywall", price: 2, unit: "each", url: "https://made-up.example/x", where: "" },
+          ] }, [
+            { type: "server_tool_use", id: "srvtoolu_fake", name: "web_search", input: { query: "drywall" } },
+            { type: "web_search_tool_result", tool_use_id: "srvtoolu_fake", content: [{ type: "web_search_result", url: "https://www.homedepot.com/p/drywall-123", title: "Drywall", encrypted_content: "x", page_age: null }] },
+          ]);
+        }
         // The planner: a short plan for any job, shares adding up to 100.
         if (params.tools?.[0]?.name === "plan_project") {
           return send(200, {

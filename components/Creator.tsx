@@ -78,6 +78,7 @@ export function Creator({ lang, defaults, ai, cloudVoice = false, edit, prefill,
   const [chosenKind, setChosenKind] = useState<DocKind | null>(null);
   const [photoNote, setPhotoNote] = useState<{ kind: "ok" | "bad"; text: string } | null>(null);
   const photoInput = useRef<HTMLInputElement>(null);
+  const plansInput = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<EditItem[]>(edit ? toEditItems(edit.items, false) : prefill ? toEditItems(prefill.items, true) : []);
   const [customer, setCustomer] = useState(edit?.customer ?? { name: "", company: "", email: "", phone: "" });
   const [business, setBusiness] = useState(
@@ -225,6 +226,31 @@ export function Creator({ lang, defaults, ai, cloudVoice = false, edit, prefill,
     setPhotoNote({
       kind: "bad",
       text: blockMessage(json.error, lang) ?? (json.error === "unreadable" ? t.photoUnreadable : json.error?.startsWith("photo") ? t.photoBad : t.errorGeneric),
+    });
+  }
+
+  async function readPlans(list: FileList | null) {
+    const file = list?.[0];
+    if (plansInput.current) plansInput.current.value = "";
+    if (!file) return;
+    speech.stop();
+    setBusy(true);
+    setError("");
+    setPhotoNote({ kind: "ok", text: lang === "es" ? "Leyendo los planos… puede tardar un minuto." : "Reading the plans… this can take a minute." });
+    const form = new FormData();
+    form.append("plans", file, "planos.pdf");
+    const res = await fetch("/api/read-plans", { method: "POST", body: form }).catch(() => null);
+    setBusy(false);
+    const json = res ? ((await res.json().catch(() => ({}))) as { text?: string; summary?: string; error?: string }) : {};
+    if (res?.ok && json.text) {
+      setTranscript((prev) => (prev.trim() ? `${prev.trim()}\n${json.text}` : json.text!));
+      if (!chosenKind) setChosenKind("estimate");
+      setPhotoNote({ kind: "ok", text: lang === "es" ? `Esto es lo que leí en los planos (${json.summary ?? ""}). Son cantidades, no precios: revísalas, agrega los precios y toca Continuar.` : `This is what I read on the plans (${json.summary ?? ""}). Quantities only, no prices: check them, add the prices and tap Continue.` });
+      return;
+    }
+    setPhotoNote({
+      kind: "bad",
+      text: blockMessage(json.error, lang) ?? (json.error === "unreadable" ? (lang === "es" ? "No encontré medidas en ese PDF. Sube los planos con dimensiones o la lista de cantidades." : "I found no dimensions in that PDF. Upload plans with dimensions or a quantity list.") : json.error === "not_pdf" ? (lang === "es" ? "Sube un PDF." : "Upload a PDF.") : json.error === "file_too_big" ? (lang === "es" ? "El PDF pasa de 20 MB." : "The PDF is over 20 MB.") : t.errorGeneric),
     });
   }
 
@@ -379,6 +405,11 @@ export function Creator({ lang, defaults, ai, cloudVoice = false, edit, prefill,
               <input ref={photoInput} type="file" accept="image/*" multiple className="sr" onChange={(e) => readPhoto(e.target.files)} disabled={busy} data-testid="photo-input" />
             </label>
             <span className="muted small">{t.fromPhotoHint}</span>
+            <label className="btn photo-btn">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M6 2h8l6 6v14H6zm7 1.5V9h5.5zM8 12h8v2H8zm0 4h8v2H8z"/></svg>
+              {lang === "es" ? "Desde los planos (PDF)" : "From the plans (PDF)"}
+              <input ref={plansInput} type="file" accept="application/pdf" className="sr" onChange={(e) => readPlans(e.target.files)} disabled={busy} data-testid="plans-input" />
+            </label>
           </div>
         )}
         {photoNote && <p className={`note ${photoNote.kind === "bad" ? "bad" : ""}`} role="status" data-testid="photo-note" style={{ textAlign: "left" }}>{photoNote.text}</p>}

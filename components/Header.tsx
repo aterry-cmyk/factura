@@ -23,6 +23,7 @@ const icon = {
   search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z M21 21l-4.3-4.3",
   spark: "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z",
   projects: "M3 7h6l2 2h10v11H3z M3 7V5h7l2 2 M8 14h8",
+  tag: "M20 12l-8 8-9-9V4h7z M8 8h.01",
 };
 function Icon({ d, filled }: { d: string; filled?: boolean }) {
   return (
@@ -71,6 +72,7 @@ export function Header({ lang, user }: { lang: Lang; user: HeaderUser }) {
     { href: "/documents", label: t.allDocs, d: icon.dash, show: true },
     { href: "/estimator", label: es ? "Estimador" : "Estimator", d: icon.spark, show: true },
     { href: "/projects", label: es ? "Proyectos" : "Projects", d: icon.projects, show: true },
+    { href: "/prices", label: es ? "Precios" : "Prices", d: icon.tag, show: true },
     { href: "/settings", label: t.settings, d: icon.settings, show: true },
     { href: "/account", label: t.myAccount, d: icon.user, show: true },
     { href: "/admin", label: "Admin", d: icon.admin, show: user.isAdmin },

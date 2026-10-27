@@ -41,6 +41,15 @@ export default async function SettingsPage() {
         hasLogo={s.hasLogo}
         business={{ name: s.name, ownerName: s.ownerName, address: s.address, phone: s.phone, email: s.email, website: s.website }}
       />
+      <section className="card">
+        <div className="row">
+          <div className="grow">
+            <h3 style={{ margin: 0 }}>{s.lang === "es" ? "Cuadrilla y salarios" : "Crew and wages"}</h3>
+            <p className="muted small" style={{ margin: "4px 0 0" }}>{s.lang === "es" ? "Tu gente, su salario por hora y las cargas, para anotar horas por nombre en los proyectos." : "Your people, their hourly wage and the burden, to log hours by name on projects."}</p>
+          </div>
+          <a className="btn" href="/settings/crew">{s.lang === "es" ? "Abrir" : "Open"}</a>
+        </div>
+      </section>
       <PaymentsSettings
         lang={s.lang} configured={stripeConfigured()} connected={Boolean(s.stripeAccountId)} ready={s.stripeReady}
         detailsSubmitted={s.stripeDetailsSubmitted} feePercent={feePercent()} owner={ctx.role === "owner"}
