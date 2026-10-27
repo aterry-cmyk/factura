@@ -8,6 +8,8 @@ import { dict, statusLabel } from "@/lib/i18n";
 import { formatMoney, todayIso } from "@/lib/money";
 import { emailConfigured, smsConfigured } from "@/lib/send";
 import { getDocument, getSettings, listEvents } from "@/lib/store";
+import { projectForEstimate } from "@/lib/projects-store";
+import Link from "next/link";
 import { headers } from "next/headers";
 import { headerUser, pageCtx } from "@/lib/session";
 
@@ -41,6 +43,7 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
   if (!doc) notFound();
   const t = dict(settings.lang);
   const events = await listEvents(doc.id);
+  const projectId = doc.kind === "estimate" && doc.status === "accepted" ? await projectForEstimate(ctx.accountId, doc.id) : null;
   const h = await headers();
   const host = h.get("host");
   const base = appBase(host ? `${h.get("x-forwarded-proto") ?? "http"}://${host}` : undefined);
@@ -62,6 +65,13 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
         smsReady={smsConfigured()}
         publicLink={publicUrl(doc, base)}
       />
+      {doc.kind === "estimate" && doc.status === "accepted" && (
+        <p className="note" style={{ marginTop: 12 }} data-testid="project-offer">
+          {projectId
+            ? <>{es ? "Este estimado ya es un proyecto. " : "This estimate is already a project. "}<Link href={`/projects/${projectId}`}>{es ? "Ver el proyecto" : "View the project"}</Link></>
+            : <>{es ? "Aceptado. Conviértelo en un proyecto para cobrarlo por hitos y mandar fotos del avance. " : "Accepted. Turn it into a project to invoice it by milestones and send progress photos. "}<Link className="btn small primary" href={`/projects/new?from=${doc.id}`}>{es ? "Crear proyecto" : "Create project"}</Link></>}
+        </p>
+      )}
       <div style={{ marginTop: 14 }}>
         <DocView doc={doc} logoSrc={settings.hasLogo ? "/api/settings/logo" : null} today={todayIso()} />
       </div>

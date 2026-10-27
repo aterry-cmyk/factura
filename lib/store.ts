@@ -278,8 +278,21 @@ export async function setStatus(acct: string, id: string, status: DocStatus): Pr
       paid_amount_cents = case when ${status} = 'sent' then null else paid_amount_cents end,
       updated_at = now()
     where account_id = ${acct} and id = ${id} returning *`;
-  if (row) await recordEvent(id, status === "sent" ? "unpaid" : status, "");
+  if (row) {
+    await recordEvent(id, status === "sent" ? "unpaid" : status, "");
+    await syncMilestoneForInvoice(id, status);
+  }
   return row ? toDoc(row) : null;
+}
+
+/**
+ * A milestone invoice's status flows back to its milestone: paid → paid, sent (marked unpaid) →
+ * invoiced, void → pending again with no invoice, so the owner can invoice it afresh.
+ */
+export async function syncMilestoneForInvoice(invoiceId: string, status: DocStatus): Promise<void> {
+  if (status === "paid") await sql()`update milestones set status = 'paid' where invoice_id = ${invoiceId}`;
+  else if (status === "sent") await sql()`update milestones set status = 'invoiced' where invoice_id = ${invoiceId}`;
+  else if (status === "void") await sql()`update milestones set status = 'pending', invoice_id = null, done_at = null where invoice_id = ${invoiceId}`;
 }
 
 /** Called only with a document already loaded for its account (or by the reminder job). */
@@ -422,6 +435,7 @@ export async function markPaidOnline(p: {
     where id = ${p.docId} and account_id = ${p.accountId} and kind = 'invoice' and status = 'sent' returning *`;
   if (!row) return null;
   await recordEvent(p.docId, "paid_online", String(p.amountCents));
+  await syncMilestoneForInvoice(p.docId, "paid");
   await sql()`insert into usage_events (account_id, kind, quantity, amount_cents, fee_cents)
     values (${p.accountId}, 'payment', 1, ${p.amountCents}, ${p.feeCents})`;
   return toDoc(row);

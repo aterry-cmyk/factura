@@ -16,7 +16,7 @@ export const db = () => postgres(process.env.TEST_DATABASE_URL!, { max: 1, onnot
 export async function resetDb(opts: { onboarded?: boolean; admin?: boolean; settings?: Record<string, unknown> } = {}): Promise<string> {
   const sql = db();
   await sql.unsafe(readFileSync("db/schema.sql", "utf8"));
-  await sql`truncate events, documents, customers, usage_events, sessions, auth_tokens, auth_attempts, memberships, users, accounts, waitlist, stripe_events restart identity cascade`;
+  await sql`truncate project_events, project_photos, checklist_items, milestones, projects, events, documents, customers, usage_events, sessions, auth_tokens, auth_attempts, memberships, users, accounts, waitlist, stripe_events restart identity cascade`;
   await sql`delete from settings`;
   await sql`update platform set signups_open = false`;
   const [a] = await sql`insert into accounts (name, plan) values ('', 'comped') returning id`;

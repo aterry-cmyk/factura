@@ -182,7 +182,10 @@ suite("database", () => {
     expect(calls[1].url).toBe("https://api.twilio.com/2010-04-01/Accounts/AC1/Messages.json");
     const form = new URLSearchParams(String(calls[1].init.body));
     expect(form.get("To")).toBe("+13015550100");
-    expect(form.get("Body")).toMatch(/Pintura Hernández le envió la factura F-0001 por \$3[,.]869[.,]00/);
+    // The text carries what's owed today, late fee included once the grace days have passed.
+    const { amountDueCents, formatMoney } = await import("@/lib/money");
+    const owed = formatMoney(amountDueCents((await store.getDocument(A, d.id))!, new Date().toISOString().slice(0, 10)), "es");
+    expect(form.get("Body")).toContain(`Pintura Hernández le envió la factura F-0001 por ${owed}`);
     const events = (await store.listEvents(d.id)).map((e) => e.kind);
     expect(events).toEqual(expect.arrayContaining(["sent_email", "sent_sms", "created"]));
   });

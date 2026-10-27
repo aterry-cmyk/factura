@@ -507,3 +507,10 @@ body:has(.topbar) { padding: 64px 0 0 76px; }
 .est-break ul { list-style: none; padding: 0; margin: 6px 0 0; }
 .est-nav { margin-top: 18px; }
 @media (prefers-reduced-motion: reduce) { .est-ph { animation: none; } }
+/* Projects: milestones and their checklist steps */
+.ms .amount { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ms textarea { width: 100%; margin-top: 8px; font: inherit; }
+.ms input[type="number"] { font: inherit; }
+.step { display: grid; gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.step:last-child { border-bottom: 0; }
+.step .check { cursor: pointer; }

@@ -105,6 +105,18 @@ http
             } }],
           });
         }
+        // The planner: a short plan for any job, shares adding up to 100.
+        if (params.tools?.[0]?.name === "plan_project") {
+          return send(200, {
+            id: "msg_fake", type: "message", role: "assistant", model: params.model, stop_reason: "tool_use", stop_sequence: null,
+            usage: { input_tokens: 500, output_tokens: 120 },
+            content: [{ type: "tool_use", id: "toolu_fake", name: "plan_project", input: { milestones: [
+              { name: "Anticipo", share_percent: 20, steps: ["Fecha de inicio acordada"] },
+              { name: "Preparación y pintura", share_percent: 50, steps: ["Proteger pisos y muebles", "Resanar paredes", "Dos manos de pintura"] },
+              { name: "Entrega", share_percent: 30, steps: ["Limpieza", "Recorrido final con el cliente"] },
+            ] } }],
+          });
+        }
         const text = String(params.messages[0].content);
         return send(200, {
           id: "msg_fake", type: "message", role: "assistant", model: params.model, stop_reason: "tool_use", stop_sequence: null,

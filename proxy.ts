@@ -7,6 +7,7 @@ const PUBLIC = [
   /^\/(login|signup|claim|reset|forgot)$/,
   /^\/api\/(login|signup|claim|reset)$/,
   /^\/i\//,
+  /^\/p\//,
   /^\/api\/cron\//,
   /^\/api\/stripe\/webhook$/,
   /^\/brand\//,
