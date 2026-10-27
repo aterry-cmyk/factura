@@ -55,7 +55,8 @@ test("an accepted estimate offers to become a project, and Loro proposes the pla
   await expect(page.getByTestId("share-sum")).toContainText("100%");
   await page.getByTestId("create-project").click();
   await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}$/);
-  projectUrl = page.url();
+  projectUrl = `${page.url()}?tab=avance`;
+  await page.goto(projectUrl);
   await expect(page.getByTestId("project-name")).toHaveText("Pintar la casa por dentro");
   await expect(page.getByTestId("remaining")).toHaveText("$12,000.00");
   await expect(page.getByTestId("percent")).toHaveText("0%");

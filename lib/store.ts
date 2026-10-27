@@ -40,6 +40,8 @@ function toSettings(r: Row): Settings {
     stripeAccountId: s(r.stripe_account_id),
     stripeReady: Boolean(r.stripe_charges_enabled),
     stripeDetailsSubmitted: Boolean(r.stripe_details_submitted),
+    markupPercent: n(r.markup_percent),
+    contingencyPercent: n(r.contingency_percent),
   };
 }
 
@@ -50,6 +52,10 @@ export async function getSettings(acct: string): Promise<Settings> {
   const [row] = await sql()`select *, logo is not null as has_logo from settings where account_id = ${acct}`;
   if (!row) throw new Error("settings missing for account");
   return toSettings(row);
+}
+
+export async function setPricing(acct: string, v: { markupPercent: number; contingencyPercent: number }): Promise<void> {
+  await sql()`update settings set markup_percent = ${v.markupPercent}, contingency_percent = ${v.contingencyPercent}, updated_at = now() where account_id = ${acct}`;
 }
 
 export async function setLang(acct: string, lang: Lang): Promise<void> {

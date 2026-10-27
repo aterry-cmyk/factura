@@ -8,6 +8,8 @@ import { emailConfigured, smsConfigured } from "@/lib/send";
 import { getSettings, setStripeStatus } from "@/lib/store";
 import { feePercent, getAccount, stripeConfigured } from "@/lib/payments";
 import { PaymentsSettings } from "@/components/PaymentsSettings";
+import { PricingSettings } from "@/components/PricingSettings";
+import { onebuildConfigured } from "@/lib/prices/onebuild";
 import { headerUser, pageCtx } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +33,7 @@ export default async function SettingsPage() {
     [s.lang === "es" ? "Voz natural (Azure Speech)" : "Natural voice (Azure Speech)", azureConfigured(), "AZURE_SPEECH_KEY, AZURE_SPEECH_REGION"],
     [s.lang === "es" ? "Recordatorios automáticos" : "Automatic reminders", Boolean(process.env.CRON_SECRET), "CRON_SECRET"],
     [s.lang === "es" ? "Cobros en línea (Stripe)" : "Online payments (Stripe)", stripeConfigured(), "STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET"],
+    [s.lang === "es" ? "Tarifas por condado (1build)" : "County cost data (1build)", onebuildConfigured(), "ONEBUILD_API_KEY"],
   ];
   return (
     <main className="wrap">
@@ -50,6 +53,7 @@ export default async function SettingsPage() {
           <a className="btn" href="/settings/crew">{s.lang === "es" ? "Abrir" : "Open"}</a>
         </div>
       </section>
+      <PricingSettings lang={s.lang} markupPercent={s.markupPercent} contingencyPercent={s.contingencyPercent} />
       <PaymentsSettings
         lang={s.lang} configured={stripeConfigured()} connected={Boolean(s.stripeAccountId)} ready={s.stripeReady}
         detailsSubmitted={s.stripeDetailsSubmitted} feePercent={feePercent()} owner={ctx.role === "owner"}

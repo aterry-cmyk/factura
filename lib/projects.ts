@@ -19,6 +19,9 @@ export interface Milestone {
   invoiceToken: string | null;
   invoiceNumber: string;
   doneAt: string | null;
+  days: number | null;
+  startsOn: string | null;
+  endsOn: string | null;
 }
 
 export interface ChecklistItem {
@@ -44,6 +47,7 @@ export interface Project {
   estimateId: string | null;
   publicToken: string;
   planSource: PlanSource;
+  startsOn: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -53,6 +57,8 @@ export interface PlanMilestone {
   name: string;
   sharePercent: number;
   steps: string[];
+  /** Calendar days the stage usually takes; the schedule lays milestones end to end from it. */
+  days?: number;
 }
 
 export const MAX_MILESTONES = 8;
@@ -135,7 +141,8 @@ export function validatePlan(raw: unknown): Result<PlanMilestone[]> {
     const stepsRaw = Array.isArray(r.steps) ? r.steps : [];
     if (stepsRaw.length > MAX_STEPS_PER_MILESTONE) errors.push(`milestones.${i}: ${MAX_STEPS_PER_MILESTONE} steps at most.`);
     const steps = stepsRaw.slice(0, MAX_STEPS_PER_MILESTONE).map((s) => str(s, 200)).filter(Boolean);
-    return { name, sharePercent: Number.isFinite(share) ? Math.round(share * 100) / 100 : 0, steps };
+    const days = num(r.days);
+    return { name, sharePercent: Number.isFinite(share) ? Math.round(share * 100) / 100 : 0, steps, ...(Number.isInteger(days) && days >= 1 && days <= 365 ? { days } : {}) };
   });
   const sum = value.reduce((a, m) => a + m.sharePercent, 0);
   if (value.length && Math.abs(sum - 100) > 1) errors.push(`milestones: The shares add up to ${Math.round(sum)}%, not 100%.`);
@@ -184,11 +191,11 @@ export function validateProjectInput(raw: unknown, checkCustomer: (c: unknown, e
 export function templatePlan(lang: Lang): PlanMilestone[] {
   const es = lang === "es";
   return [
-    { name: es ? "Anticipo" : "Deposit", sharePercent: 10, steps: [es ? "Estimado aceptado y fecha de inicio acordada" : "Estimate accepted and start date agreed"] },
-    { name: es ? "Inicio y preparación" : "Start and preparation", sharePercent: 20, steps: [es ? "Proteger el área de trabajo" : "Protect the work area", es ? "Materiales en sitio" : "Materials on site", es ? "Demolición o preparación terminada" : "Demolition or preparation done"] },
-    { name: es ? "Trabajo principal" : "Main work", sharePercent: 40, steps: [es ? "Primera mitad del trabajo terminada" : "First half of the work done", es ? "Segunda mitad del trabajo terminada" : "Second half of the work done"] },
-    { name: es ? "Acabados" : "Finishes", sharePercent: 20, steps: [es ? "Acabados y detalles" : "Finishes and details", es ? "Limpieza final" : "Final clean-up"] },
-    { name: es ? "Entrega final" : "Final walkthrough", sharePercent: 10, steps: [es ? "Recorrido final con el cliente" : "Final walkthrough with the customer"] },
+    { name: es ? "Anticipo" : "Deposit", sharePercent: 10, days: 1, steps: [es ? "Estimado aceptado y fecha de inicio acordada" : "Estimate accepted and start date agreed"] },
+    { name: es ? "Inicio y preparación" : "Start and preparation", sharePercent: 20, days: 3, steps: [es ? "Proteger el área de trabajo" : "Protect the work area", es ? "Materiales en sitio" : "Materials on site", es ? "Demolición o preparación terminada" : "Demolition or preparation done"] },
+    { name: es ? "Trabajo principal" : "Main work", sharePercent: 40, days: 10, steps: [es ? "Primera mitad del trabajo terminada" : "First half of the work done", es ? "Segunda mitad del trabajo terminada" : "Second half of the work done"] },
+    { name: es ? "Acabados" : "Finishes", sharePercent: 20, days: 4, steps: [es ? "Acabados y detalles" : "Finishes and details", es ? "Limpieza final" : "Final clean-up"] },
+    { name: es ? "Entrega final" : "Final walkthrough", sharePercent: 10, days: 1, steps: [es ? "Recorrido final con el cliente" : "Final walkthrough with the customer"] },
   ];
 }
 

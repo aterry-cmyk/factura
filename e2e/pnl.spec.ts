@@ -43,7 +43,7 @@ test("budget, costs from words and a receipt, and the P&L that follows", async (
     totalCents: 2_500_000, estimateId: null, plan: templatePlan("es"), planSource: "template",
   });
   expect(r.status).toBe(200);
-  projectUrl = `/projects/${r.json.id}`;
+  projectUrl = `/projects/${r.json.id}?tab=dinero`;
   await page.goto(projectUrl);
 
   await page.getByTestId("budget-labor").fill("9000");
@@ -89,10 +89,10 @@ test("budget, costs from words and a receipt, and the P&L that follows", async (
   await expect(page.getByTestId("cost-list")).toContainText("Drywall 1/2 4x8, Tornillos · Home Depot");
 
   // The P&L page by period.
-  await page.goto(`${projectUrl}/pnl?period=month`);
+  await page.goto(`${projectUrl.split("?")[0]}/pnl?period=month`);
   await expect(page.getByTestId("rollup-row")).toHaveCount(1);
   await expect(page.getByTestId("rollup-row").first()).toContainText("$1,456.72");
-  await page.goto(`${projectUrl}/pnl?period=day`);
+  await page.goto(`${projectUrl.split("?")[0]}/pnl?period=day`);
   await expect(page.getByTestId("rollup-row")).toHaveCount(2); // today, and the receipt's 10/20
   await page.goto("/projects");
   await expect(page.getByTestId("business-month")).toContainText("Gastado este mes");

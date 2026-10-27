@@ -2,6 +2,7 @@ import { blockForCtx, recordUsage } from "@/lib/accounts";
 import { aiConfigured } from "@/lib/ai/config";
 import { searchPrices } from "@/lib/ai/costs";
 import { ownPrices, saveLookup } from "@/lib/costs-store";
+import { onebuildConfigured, searchOnebuild } from "@/lib/prices/onebuild";
 import { fail, readJson } from "@/lib/http";
 import { routeCtx } from "@/lib/session";
 import { getSettings } from "@/lib/store";
@@ -19,17 +20,21 @@ export async function POST(req: Request) {
   const query = typeof body?.query === "string" ? body.query.trim().slice(0, 200) : "";
   if (query.length < 2) return fail("empty", 400);
   const own = await ownPrices(ctx.accountId, query);
-  if (!aiConfigured()) return Response.json({ own, options: [], search: "ai_setup" });
+  const settings0 = await getSettings(ctx.accountId);
+  const zip0 = /\b\d{5}\b/.exec(settings0.address)?.[0] ?? "";
+  // The licensed feed first: county-level material and labor rates, when the key is set.
+  const feed = onebuildConfigured() ? await searchOnebuild({ query, zip: zip0, state: settings0.state }) : null;
+  const rates = feed?.ok ? feed.options : [];
+  if (feed && !feed.ok && feed.error === "failed") console.error("[onebuild]", feed.detail);
+  if (!aiConfigured()) return Response.json({ own, rates, options: [], search: "ai_setup", feed: feed ? (feed.ok ? "ok" : feed.error) : "setup" });
   const block = await blockForCtx(ctx, "ai");
   if (block) return Response.json({ error: block }, { status: 402 });
   try {
-    const settings = await getSettings(ctx.accountId);
-    const zip = /\b\d{5}\b/.exec(settings.address)?.[0] ?? "";
-    const result = await searchPrices({ query, zip, lang: settings.lang });
+    const result = await searchPrices({ query, zip: zip0, lang: settings0.lang });
     await recordUsage(ctx.accountId, "ai_request", 1, result.usage);
-    if (!result.ok) return Response.json({ own, options: [], search: result.error });
+    if (!result.ok) return Response.json({ own, rates, options: [], search: result.error, feed: feed ? (feed.ok ? "ok" : feed.error) : "setup" });
     if (result.options.length) await saveLookup(ctx.accountId, query, result.options);
-    return Response.json({ own, options: result.options, search: "ok", foundOn: new Date().toISOString().slice(0, 10) });
+    return Response.json({ own, rates, options: result.options, search: "ok", feed: feed ? (feed.ok ? "ok" : feed.error) : "setup", foundOn: new Date().toISOString().slice(0, 10) });
   } catch (err) {
     return fail("search_failed", 502, err);
   }

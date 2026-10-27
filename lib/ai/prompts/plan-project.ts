@@ -1,7 +1,7 @@
 import type { Lang } from "@/lib/types";
 import { tradeGuideText, TRADES_VERSION } from "./trades";
 
-export const PLAN_PROMPT_VERSION = `plan-project@1+${TRADES_VERSION}`;
+export const PLAN_PROMPT_VERSION = `plan-project@2+${TRADES_VERSION}`;
 
 /**
  * The planner proposes how a job is staged and paid: milestones with a share of the price each,
@@ -18,6 +18,7 @@ export function planSystemPrompt(lang: Lang): string {
     `- Write every name and step in ${language}, short and plain, the way a contractor talks to a customer.`,
     "- milestones: 2 to 8, in the order the work happens. The first is usually a deposit (10 to 30%), the last the final walkthrough or delivery (10 to 20%). Each milestone is a payment the customer makes when its work is done, so group the work the way a customer would agree to pay for it.",
     "- share_percent: whole numbers that add up to exactly 100. Larger stages get larger shares. Never write a dollar amount anywhere; the app computes amounts from the contract total.",
+    "- days: how many calendar days that stage usually takes a small crew, 1 to 365, from the trade's usual pace; the owner adjusts it.",
     "- steps: 1 to 15 per milestone, the checklist of what gets done in that stage, in the order it is done, following the usual practice of the trade (for example: protect the area, demolition, rough plumbing, rough electrical, inspection, insulation, drywall, prime, tile, cabinets, counters, fixtures, paint, clean-up, walkthrough). Include the inspections the trade normally needs before work is covered, as a step, without claiming what the local code requires.",
     "- Use only what the job says. Do not add rooms, materials, sizes, dates, prices or quantities the owner didn't give. If the description is thin, keep the plan general rather than inventing detail.",
     "- No legal, permit or code advice: a step may say \"Inspection\" but never state a rule.",
@@ -59,9 +60,10 @@ export const PLAN_TOOL = {
           properties: {
             name: { type: "string" },
             share_percent: { type: "integer", description: "Whole percent of the contract total; all milestones add up to 100." },
+            days: { type: "integer", description: "Calendar days this stage usually takes, 1 to 365." },
             steps: { type: "array", minItems: 1, maxItems: 15, items: { type: "string" } },
           },
-          required: ["name", "share_percent", "steps"],
+          required: ["name", "share_percent", "days", "steps"],
         },
       },
     },

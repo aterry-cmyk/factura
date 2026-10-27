@@ -176,6 +176,10 @@ export function ProjectPlanner({ lang, estimate, aiReady, defaultCustomer }: { l
                     <input type="number" min={0} max={100} step={1} value={m.sharePercent} onChange={(e) => edit(i, { sharePercent: Number(e.target.value) })} style={{ width: 70 }} aria-label={L(lang, `Porcentaje del hito ${i + 1}`, `Share of milestone ${i + 1}`)} />
                     <span>%</span>
                   </label>
+                  <label className="row" style={{ gap: 4 }}>
+                    <input type="number" min={1} max={365} value={m.days ?? ""} onChange={(e) => edit(i, { days: Number(e.target.value) || undefined })} style={{ width: 64 }} placeholder="5" aria-label={L(lang, `Días del hito ${i + 1}`, `Days of milestone ${i + 1}`)} />
+                    <span className="small muted">{L(lang, "días", "days")}</span>
+                  </label>
                   <strong className="amount" data-testid="ms-amount">{amounts[i] != null ? formatMoney(amounts[i], lang) : "—"}</strong>
                   {plan.length > MIN_MILESTONES && (
                     <button type="button" className="btn small" onClick={() => removeMilestone(i)} aria-label={L(lang, `Quitar hito ${i + 1}`, `Remove milestone ${i + 1}`)}>×</button>

@@ -70,6 +70,9 @@ export interface Settings extends Business {
   stripeAccountId: string;
   stripeReady: boolean;
   stripeDetailsSubmitted: boolean;
+  /** The owner's pricing rules for proposals, in percent: markup on cost, contingency on the price. */
+  markupPercent: number;
+  contingencyPercent: number;
 }
 
 export interface Doc {

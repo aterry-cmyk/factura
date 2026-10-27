@@ -10,7 +10,7 @@ import {
 import { validateCustomer } from "@/lib/validate";
 
 const ms = (over: Partial<Milestone> & { id: string; position: number; amountCents: number }): Milestone => ({
-  name: `M${over.position}`, status: "pending", invoiceId: null, invoiceToken: null, invoiceNumber: "", doneAt: null, ...over,
+  name: `M${over.position}`, status: "pending", invoiceId: null, invoiceToken: null, invoiceNumber: "", doneAt: null, days: null, startsOn: null, endsOn: null, ...over,
 });
 const item = (milestoneId: string, done: boolean, id = Math.random().toString()): ChecklistItem =>
   ({ id, milestoneId, position: 0, text: "step", doneAt: done ? "2026-10-27T00:00:00Z" : null, note: "", photoIds: [] });
@@ -139,7 +139,7 @@ describe("the planner", () => {
     if (r.ok) {
       expect(r.plan.map((m) => m.sharePercent)).toEqual([20, 30, 50]);
       expect(r.model).toBe("claude-test");
-      expect(r.promptVersion).toMatch(/^plan-project@1/);
+      expect(r.promptVersion).toMatch(/^plan-project@2/);
       expect(r.usage).toEqual({ input: 100, output: 50 });
     }
     expect(calls).toHaveLength(1);

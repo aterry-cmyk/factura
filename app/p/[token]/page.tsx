@@ -63,7 +63,7 @@ export default async function PublicProject({ params }: { params: Promise<{ toke
           <tbody>
             {milestones.map((m) => (
               <tr key={m.id}>
-                <td>{m.position + 1}. {m.name}</td>
+                <td>{m.position + 1}. {m.name}{m.startsOn && m.endsOn ? <span className="muted small"> · {m.startsOn} – {m.endsOn}</span> : null}</td>
                 <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>{formatMoney(m.amountCents, lang)}</td>
                 <td style={{ textAlign: "right" }}>
                   <span className={`badge ${m.status === "paid" ? "" : m.status === "invoiced" ? "warn" : "grey"}`}>

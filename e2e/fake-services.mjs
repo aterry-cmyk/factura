@@ -111,6 +111,24 @@ http
           usage: { input_tokens: 300, output_tokens: 60 },
           content: [...extra, { type: "tool_use", id: "toolu_fake", name, input }],
         });
+        // The proposal builder: one round of questions, then the scope. A "history" line that matches
+        // the owner's past price and a suggested one; the app marks each.
+        if (toolNames.includes("ask_scope")) {
+          const text = String(params.messages[0].content);
+          const answered = /<answers>\n- /.test(text);
+          return toolMsg("ask_scope", answered
+            ? { ready: true, questions: [] }
+            : { ready: false, questions: [{ question: "¿Cuántos pies cuadrados tiene la cocina?", options: ["100", "150", "200"] }, { question: "¿Incluye quitar lo viejo?", options: ["Sí", "No"] }] });
+        }
+        if (toolNames.includes("record_proposal")) {
+          const text = String(params.messages[0].content);
+          const sf = /→ (\d+)/.exec(text)?.[1] ?? "150";
+          return toolMsg("record_proposal", { summary: "Remodelación completa de la cocina.", sections: [
+            { title: "Demolición", lines: [{ description: "Quitar gabinetes y encimera viejos", quantity: 1, unit: "LS", unit_cost: 600, cost_source: "suggested", basis: "Un día de dos personas con desecho" }] },
+            { title: "Pintura", lines: [{ description: "Pintar cocina", quantity: 1, unit: "LS", unit_cost: 2200, cost_source: "history", basis: "Pintar cocina, tu precio anterior" }] },
+            { title: "Piso", lines: [{ description: "Porcelanato instalado", quantity: Number(sf), unit: "SF", unit_cost: 0, cost_source: "suggested", basis: "" }] },
+          ] });
+        }
         // Costs: "Pedro 8 horas" and a material with an amount; an amount nobody said is flagged by the app.
         if (toolNames.includes("record_costs")) {
           const spent = /<spent>\n([\s\S]*?)\n<\/spent>/.exec(String(params.messages[0].content))?.[1] ?? "";
@@ -163,6 +181,15 @@ http
       }
       // fal.ai: example pictures and the preview.
       if (req.url?.startsWith("/fal-ai/")) return send(200, { images: [{ url: `https://v3b.fal.media/files/fake/${req.url.split("/")[2]}.jpg` }] });
+      // 1build's gateway: a GraphQL sources query, answered with county rates.
+      if (req.url === "/" && req.method === "POST" && body.includes("query sources")) {
+        if (req.headers["1build-api-key"] !== "1build_fake") return send(401, { errors: [{ message: "unauthorized" }] });
+        const vars = JSON.parse(body).variables?.input ?? {};
+        const nodes = /drywall|porcelanato|tile/i.test(vars.searchTerm ?? "")
+          ? [{ id: "ob-1", name: "Porcelain tile floor, installed", uom: "SF", materialRateUsdCents: 450, laborRateUsdCents: 2800, burdenedLaborRateUsdCents: 3600, calculatedUnitRateUsdCents: 1250, externalProductUrl: "" }]
+          : [];
+        return send(200, { data: { sources: { nodes, dataLocation: { countyName: "Prince George's County", stateName: "Maryland" } } } });
+      }
       if (req.url === "/cognitiveservices/v1") {
         if (azureFails) return send(401, { error: "bad key" });
         // Not real audio: the tests record what the page asks to play rather than hearing it.

@@ -10,6 +10,7 @@ type Row = Record<string, unknown>;
 const n = (v: unknown): number => Number(v ?? 0);
 const s = (v: unknown): string => (v == null ? "" : String(v));
 const iso = (v: unknown): string | null => (v instanceof Date ? v.toISOString() : v == null ? null : String(v));
+const day = (v: unknown): string => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
 const isId = (v: string) => /^[0-9a-f-]{36}$/i.test(v);
 
 function toProject(r: Row): Project {
@@ -26,6 +27,7 @@ function toProject(r: Row): Project {
     estimateId: r.estimate_id ? s(r.estimate_id) : null,
     publicToken: s(r.public_token),
     planSource: r.plan_source as PlanSource,
+    startsOn: r.starts_on ? day(r.starts_on) : null,
     createdAt: iso(r.created_at) ?? "",
     updatedAt: iso(r.updated_at) ?? "",
   };
@@ -42,6 +44,9 @@ function toMilestone(r: Row): Milestone {
     invoiceToken: r.invoice_token ? s(r.invoice_token) : null,
     invoiceNumber: s(r.invoice_number),
     doneAt: iso(r.done_at),
+    days: r.days == null ? null : n(r.days),
+    startsOn: r.starts_on ? day(r.starts_on) : null,
+    endsOn: r.ends_on ? day(r.ends_on) : null,
   };
 }
 
@@ -86,8 +91,8 @@ export async function createProject(acct: string, d: ProjectInput, meta: { model
     const projectId = s(row.id);
     let position = 0;
     for (const [i, m] of d.plan.entries()) {
-      const [ms] = await tx`insert into milestones (project_id, account_id, position, name, amount_cents)
-        values (${projectId}, ${acct}, ${i}, ${m.name}, ${amounts[i]}) returning id`;
+      const [ms] = await tx`insert into milestones (project_id, account_id, position, name, amount_cents, days)
+        values (${projectId}, ${acct}, ${i}, ${m.name}, ${amounts[i]}, ${m.days ?? null}) returning id`;
       for (const step of m.steps) {
         await tx`insert into checklist_items (project_id, milestone_id, account_id, position, text)
           values (${projectId}, ${s(ms.id)}, ${acct}, ${position++}, ${step})`;
@@ -241,4 +246,94 @@ export async function projectForEstimate(acct: string, estimateId: string): Prom
   if (!isId(estimateId)) return null;
   const [row] = await sql()`select id from projects where account_id = ${acct} and estimate_id = ${estimateId} order by created_at desc limit 1`;
   return row ? s(row.id) : null;
+}
+
+// ---- Schedule and proposal ----
+
+/** The start date and each milestone's days; dates are laid end to end from the start. */
+export async function saveSchedule(acct: string, projectId: string, startsOn: string, dated: { id: string; days: number; startsOn: string; endsOn: string }[]): Promise<boolean> {
+  if (!isId(projectId)) return false;
+  const rows = await sql()`update projects set starts_on = ${startsOn}, updated_at = now() where account_id = ${acct} and id = ${projectId} returning id`;
+  if (!rows.length) return false;
+  await sql().begin(async (tx) => {
+    for (const m of dated) {
+      await tx`update milestones set days = ${m.days}, starts_on = ${m.startsOn}, ends_on = ${m.endsOn} where account_id = ${acct} and project_id = ${projectId} and id = ${m.id}`;
+    }
+  });
+  await recordProjectEvent(projectId, "scheduled", startsOn);
+  return true;
+}
+
+export async function saveProposal(acct: string, projectId: string, proposal: import("./proposal").Proposal): Promise<boolean> {
+  if (!isId(projectId)) return false;
+  const db = sql();
+  const rows = await db`update projects set proposal = ${db.json(proposal as never)}, updated_at = now() where account_id = ${acct} and id = ${projectId} returning id`;
+  return rows.length === 1;
+}
+
+export async function getProposal(acct: string, projectId: string): Promise<import("./proposal").Proposal | null> {
+  if (!isId(projectId)) return null;
+  const [row] = await sql()`select proposal from projects where account_id = ${acct} and id = ${projectId}`;
+  return (row?.proposal as import("./proposal").Proposal) ?? null;
+}
+
+/**
+ * The proposal became an estimate: the project remembers it and takes its total, and the
+ * milestone amounts are re-split by their shares, but only while nothing has been invoiced.
+ */
+export async function adoptEstimate(acct: string, projectId: string, estimateId: string, totalCents: number): Promise<{ resplit: boolean }> {
+  const view = await getProject(acct, projectId);
+  if (!view) return { resplit: false };
+  const untouched = view.milestones.every((m) => m.status === "pending");
+  await sql().begin(async (tx) => {
+    await tx`update projects set estimate_id = ${estimateId}, total_cents = ${totalCents}, updated_at = now() where account_id = ${acct} and id = ${projectId}`;
+    if (untouched && view.milestones.length) {
+      const oldTotal = view.milestones.reduce((a, m) => a + m.amountCents, 0);
+      const shares = view.milestones.map((m) => (oldTotal > 0 ? (m.amountCents / oldTotal) * 100 : 100 / view.milestones.length));
+      const amounts = splitAmounts(totalCents, shares);
+      for (const [i, m] of view.milestones.entries()) await tx`update milestones set amount_cents = ${amounts[i]} where id = ${m.id}`;
+    }
+  });
+  await recordProjectEvent(projectId, "proposal_sent", String(totalCents));
+  return { resplit: untouched };
+}
+
+// ---- Clients ----
+
+export interface Client { id: string; name: string; company: string; email: string; phone: string; address: string; notes: string; createdAt: string }
+export interface ClientCard extends Client { projects: number; documents: number; owedCents: number; paidCents: number }
+
+const toClient = (r: Row): Client => ({ id: s(r.id), name: s(r.name), company: s(r.company), email: s(r.email), phone: s(r.phone), address: s(r.address), notes: s(r.notes), createdAt: iso(r.created_at) ?? "" });
+
+export async function listClients(acct: string): Promise<ClientCard[]> {
+  const rows = await sql()`select c.*,
+      (select count(*)::int from projects p where p.customer_id = c.id) as projects,
+      (select count(*)::int from documents d where d.customer_id = c.id and d.status <> 'draft') as documents,
+      (select coalesce(sum(total_cents), 0)::bigint from documents d where d.customer_id = c.id and d.kind = 'invoice' and d.status = 'sent') as owed,
+      (select coalesce(sum(coalesce(paid_amount_cents, total_cents)), 0)::bigint from documents d where d.customer_id = c.id and d.kind = 'invoice' and d.status = 'paid') as paid
+    from customers c where c.account_id = ${acct} order by lower(c.name) limit 500`;
+  return rows.map((r) => ({ ...toClient(r), projects: n(r.projects), documents: n(r.documents), owedCents: n(r.owed), paidCents: n(r.paid) }));
+}
+
+export async function getClient(acct: string, id: string): Promise<Client | null> {
+  if (!isId(id)) return null;
+  const [row] = await sql()`select * from customers where account_id = ${acct} and id = ${id}`;
+  return row ? toClient(row) : null;
+}
+
+export async function updateClient(acct: string, id: string, c: Omit<Client, "id" | "createdAt">): Promise<Client | null> {
+  if (!isId(id)) return null;
+  const [row] = await sql()`update customers set name = ${c.name}, company = ${c.company}, email = ${c.email}, phone = ${c.phone}, address = ${c.address}, notes = ${c.notes}
+    where account_id = ${acct} and id = ${id} returning *`;
+  if (!row) return null;
+  // The name and contact on the client's open projects and drafts follow.
+  const customer = { name: c.name, company: c.company, email: c.email, phone: c.phone };
+  const db = sql();
+  await db`update projects set customer = ${db.json(customer as never)} where account_id = ${acct} and customer_id = ${id}`;
+  await db`update documents set customer = ${db.json(customer as never)} where account_id = ${acct} and customer_id = ${id} and status = 'draft'`;
+  return toClient(row);
+}
+
+export async function clientProjects(acct: string, customerId: string): Promise<ProjectCard[]> {
+  return (await listProjects(acct, 500)).filter((p) => p.customerId === customerId);
 }

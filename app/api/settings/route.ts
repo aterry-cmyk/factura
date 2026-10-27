@@ -1,5 +1,5 @@
 import { fail, readJson } from "@/lib/http";
-import { saveBusiness, setLang, setVoice } from "@/lib/store";
+import { saveBusiness, setLang, setPricing, setVoice } from "@/lib/store";
 import { validateBusiness } from "@/lib/validate";
 import { isCountry, isGender } from "@/lib/voice";
 import { routeCtx } from "@/lib/session";
@@ -19,6 +19,12 @@ export async function POST(req: Request) {
       voiceOn: body.voiceOn as boolean | undefined,
       voiceGender: body.voiceGender as "female" | "male" | undefined,
     });
+  }
+  if (body.pricing && typeof body.pricing === "object") {
+    const p = body.pricing as Record<string, unknown>;
+    const markup = Number(p.markupPercent ?? 0), contingency = Number(p.contingencyPercent ?? 0);
+    if (!(markup >= 0 && markup <= 300) || !(contingency >= 0 && contingency <= 100)) return Response.json({ error: "invalid", errors: ["pricing: markup 0–300%, contingency 0–100%"] }, { status: 400 });
+    await setPricing(ctx.accountId, { markupPercent: Math.round(markup * 100) / 100, contingencyPercent: Math.round(contingency * 100) / 100 });
   }
   if (body.business) {
     const errors: string[] = [];

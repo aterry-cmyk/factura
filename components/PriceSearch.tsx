@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { PriceOption } from "@/lib/ai/costs";
+import type { RateOption } from "@/lib/prices/onebuild";
 import { formatMoney } from "@/lib/money";
 import type { Lang } from "@/lib/types";
 import { blockMessage } from "@/lib/plans";
@@ -19,6 +20,8 @@ export function PriceSearch({ lang, aiReady, recent }: { lang: Lang; aiReady: bo
   const [busy, setBusy] = useState(false);
   const [own, setOwn] = useState<Own[]>([]);
   const [options, setOptions] = useState<PriceOption[]>([]);
+  const [rates, setRates] = useState<RateOption[]>([]);
+  const [feed, setFeed] = useState("setup");
   const [foundOn, setFoundOn] = useState("");
   const [state, setState] = useState<"idle" | "ok" | "ai_setup" | "no_search" | "failed">("idle");
   const [error, setError] = useState("");
@@ -29,11 +32,13 @@ export function PriceSearch({ lang, aiReady, recent }: { lang: Lang; aiReady: bo
     setBusy(true);
     setError("");
     const res = await fetch("/api/prices/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query }) }).catch(() => null);
-    const json = res ? ((await res.json().catch(() => ({}))) as { own?: Own[]; options?: PriceOption[]; search?: string; foundOn?: string; error?: string }) : {};
+    const json = res ? ((await res.json().catch(() => ({}))) as { own?: Own[]; rates?: RateOption[]; feed?: string; options?: PriceOption[]; search?: string; foundOn?: string; error?: string }) : {};
     setBusy(false);
     if (!res?.ok) return setError(res?.status === 402 ? (blockMessage(json.error, lang) ?? "") : L(lang, "No se pudo buscar. Intenta otra vez.", "The search failed. Try again."));
     setOwn(json.own ?? []);
     setOptions(json.options ?? []);
+    setRates(json.rates ?? []);
+    setFeed(json.feed ?? "setup");
     setFoundOn(json.foundOn ?? "");
     setState(json.search === "ok" ? "ok" : json.search === "ai_setup" ? "ai_setup" : json.search === "no_search" ? "no_search" : "failed");
   }
@@ -69,6 +74,26 @@ export function PriceSearch({ lang, aiReady, recent }: { lang: Lang; aiReady: bo
               ))}
             </ul>
           ) : <p className="muted small" style={{ margin: 0 }}>{L(lang, "Ningún recibo tuyo menciona eso todavía. Cuando fotografíes recibos en tus proyectos, tus precios aparecerán aquí primero.", "None of your receipts mention that yet. As you photograph receipts on your projects, your own prices show here first.")}</p>}
+        </section>
+      )}
+
+      {state !== "idle" && (
+        <section className="card" data-testid="county-rates">
+          <h3 style={{ marginTop: 0 }}>{L(lang, "Tarifas por condado (1build)", "County rates (1build)")}</h3>
+          {feed === "setup" && <p className="note small" style={{ margin: 0 }}>{L(lang, "La fuente de tarifas por condado no está conectada todavía (falta la clave de 1build). Mientras tanto: tus recibos y la búsqueda en línea.", "The county cost feed isn't connected yet (the 1build key is missing). Meanwhile: your receipts and the online search.")}</p>}
+          {feed === "failed" && <p className="note bad" style={{ margin: 0 }}>{L(lang, "La fuente de tarifas no respondió.", "The cost feed didn't answer.")}</p>}
+          {feed === "ok" && rates.length === 0 && <p className="muted small" style={{ margin: 0 }}>{L(lang, "Sin resultados en la fuente para eso.", "No results in the feed for that.")}</p>}
+          {rates.length > 0 && (
+            <ul className="list small">
+              {rates.map((r) => (
+                <li key={r.id} className="row" style={{ padding: "6px 0", borderBottom: "1px solid var(--line)", flexWrap: "wrap" }} data-testid="rate-option">
+                  <span className="grow">{r.name} <span className="muted">· {r.county ? `${r.county}, ` : ""}{r.state}</span>{r.url ? <> · <a href={r.url} target="_blank" rel="noreferrer">{L(lang, "producto", "product")}</a></> : null}</span>
+                  <strong className="amount">{formatMoney(r.unitRateCents, lang)} <span className="muted small">/ {r.unit}</span></strong>
+                  {r.laborCents ? <span className="muted small">{L(lang, "mano de obra", "labor")} {formatMoney(r.burdenedLaborCents || r.laborCents, lang)}/h</span> : null}
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       )}
 
